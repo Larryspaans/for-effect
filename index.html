@@ -27,8 +27,12 @@
       }
     }
     </script>
+    <style>
+        .no-select { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
+        input[type="checkbox"]:checked + span { text-decoration: line-through; opacity: 0.5; }
+    </style>
 </head>
-<body class="bg-[#FDFDFD]">
+<body class="bg-[#FDFDFD] no-select" oncontextmenu="return false;">
     <div id="root"></div>
 
     <script type="text/babel" data-type="module">
@@ -37,10 +41,10 @@ import { createRoot } from 'react-dom/client';
 import { 
   Calendar, Smile, CheckCircle2, Users, MessageCircle, TrendingDown, 
   Lock, X, Trophy, Target, Activity, Dumbbell, Apple, 
-  Stethoscope, ChevronRight, Droplets, Camera, Check, Brain, Smartphone, AlertCircle, Trash2, Eye, EyeOff, Search, UserPlus, Flame, BarChart3
+  Stethoscope, ChevronRight, Droplets, Camera, Check, Brain, Smartphone, AlertCircle, Trash2, Eye, EyeOff, Search, UserPlus, Flame, BarChart3, Zap, Star, FileText, Save, ListTodo
 } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
-import { getFirestore, collection, addDoc, onSnapshot, query, serverTimestamp, doc, deleteDoc, setDoc, getDocs } from 'firebase/firestore';
+import { getFirestore, collection, addDoc, onSnapshot, query, serverTimestamp, doc, deleteDoc, setDoc, getDocs, updateDoc } from 'firebase/firestore';
 import { getAuth, signInAnonymously } from 'firebase/auth';
 
 const firebaseConfig = {
@@ -102,10 +106,49 @@ const SliderField = ({ label, name, value, onChange, max = "10", min = "1", step
   </div>
 );
 
+const ChallengeBar = ({ label, percentage }) => (
+    <div className="mb-4">
+        <div className="flex justify-between text-[9px] font-black uppercase italic mb-1">
+            <span className="text-slate-500">{label}</span>
+            <span className="text-red-600">{percentage}%</span>
+        </div>
+        <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden">
+            <div className="h-full bg-[#E31E24] transition-all duration-1000 ease-out" style={{ width: `${percentage}%` }}></div>
+        </div>
+    </div>
+);
+
+const WeightChart = ({ data }) => {
+  if (!data || data.length < 2) return <div className="text-[10px] text-slate-400 italic text-center py-4 uppercase font-bold">Meer metingen nodig voor de grafiek</div>;
+  const chartData = [...data].reverse(); 
+  const weights = chartData.map(d => parseFloat(d.weight)).filter(w => !isNaN(w) && w > 0);
+  if(weights.length < 2) return <div className="text-[10px] text-slate-400 italic text-center py-4 uppercase font-bold">Gewicht niet consistent ingevuld</div>;
+  const minW = Math.min(...weights) - 1;
+  const maxW = Math.max(...weights) + 1;
+  const range = maxW - minW;
+  const pts = weights.map((w, i) => {
+    const x = (i / (weights.length - 1)) * 100;
+    const y = 100 - ((w - minW) / range) * 100;
+    return `${x},${y}`;
+  }).join(' ');
+  return (
+    <div className="mt-2 relative">
+      <svg viewBox="0 -10 100 120" className="w-full h-32 overflow-visible" preserveAspectRatio="none">
+        <polyline fill="none" stroke="#E31E24" strokeWidth="3" points={pts} strokeLinecap="round" strokeLinejoin="round" className="drop-shadow-md" />
+        {weights.map((w, i) => {
+          const x = (i / (weights.length - 1)) * 100;
+          const y = 100 - ((w - minW) / range) * 100;
+          return <circle key={i} cx={x} cy={y} r="3.5" fill="white" stroke="#E31E24" strokeWidth="2" />;
+        })}
+      </svg>
+    </div>
+  );
+};
+
 // --- MAIN APP ---
 const App = () => {
   const [view, setView] = useState('login'); 
-  const [clientTab, setClientTab] = useState('dashboard'); // NIEUW: Dashboard vs Form
+  const [clientTab, setClientTab] = useState('dashboard');
   const [step, setStep] = useState('form');
   const [submissions, setSubmissions] = useState([]);
   const [clients, setClients] = useState([]);
@@ -175,11 +218,21 @@ const App = () => {
       await addDoc(collection(db, 'clients'), {
         name: newClientName.trim(),
         code: newClientCode.trim(),
+        schemaUrl: '',
+        weeklyChallenge: '',
+        task1: '', task2: '', task3: '',
+        task1Done: false, task2Done: false, task3Done: false,
         createdAt: serverTimestamp()
       });
       setNewClientName('');
       setNewClientCode('');
     } catch (err) { alert("Fout bij toevoegen klant"); }
+  };
+
+  const updateClientField = async (id, field, value) => {
+    try {
+        await updateDoc(doc(db, 'clients', id), { [field]: value });
+    } catch (err) { console.error("Fout bij opslaan", err); }
   };
 
   const deleteClient = async (id) => {
@@ -244,20 +297,52 @@ const App = () => {
     return submissions.filter(s => (s.clientName || "").toLowerCase().includes(searchTerm.toLowerCase()));
   }, [submissions, searchTerm]);
 
-  // NIEUW: Progressie data berekenen voor de huidige cliënt
   const clientData = useMemo(() => {
     const data = submissions.filter(s => s.clientName === formData.clientName);
+    const clientInfo = clients.find(c => c.name === formData.clientName);
     const lastWeight = data[0]?.weight || '0';
     const firstWeight = data[data.length - 1]?.weight || '0';
     const weightDiff = (Number(firstWeight) - Number(lastWeight)).toFixed(1);
+    
+    const sevenDaysAgo = new Date();
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+    const streakCount = data.filter(s => new Date(s.date) >= sevenDaysAgo).length;
+
+    const avgEnergy = data.length > 0 ? (data.reduce((acc, curr) => acc + Number(curr.energy), 0) / data.length).toFixed(1) : 0;
+    const avgSleep = data.length > 0 ? (data.reduce((acc, curr) => acc + Number(curr.sleepHours), 0) / data.length).toFixed(1) : 0;
+    const avgSteps = data.length > 0 ? (data.reduce((acc, curr) => acc + (Number(curr.steps) || 0), 0) / data.length).toFixed(0) : 0;
+    const avgWater = data.length > 0 ? (data.reduce((acc, curr) => acc + (Number(curr.waterLiters) || 0), 0) / data.length).toFixed(1) : 0;
+    const trainingsCount = data.filter(s => s.trainingDay === true).length;
+    const avgProtein = data.length > 0 ? (data.reduce((acc, curr) => acc + (Number(curr.proteinGrams) || 0), 0) / data.length).toFixed(0) : 0;
+
     return {
+        clientId: clientInfo?.id,
         count: data.length,
         lastWeight,
         weightDiff: weightDiff > 0 ? `-${weightDiff}kg` : `${Math.abs(weightDiff)}kg`,
-        avgEnergy: data.length > 0 ? (data.reduce((acc, curr) => acc + Number(curr.energy), 0) / data.length).toFixed(1) : 0,
-        history: data.slice(0, 5) // Laatste 5 voor mini-overzicht
+        avgEnergy, avgSleep, avgSteps,
+        history: data.slice(0, 5),
+        chartData: data.slice(0, 10),
+        streak: streakCount,
+        latestWin: data[0]?.biggestWin || '',
+        schemaUrl: clientInfo?.schemaUrl || '',
+        weeklyChallenge: clientInfo?.weeklyChallenge || '',
+        task1: clientInfo?.task1 || '', task2: clientInfo?.task2 || '', task3: clientInfo?.task3 || '',
+        task1Done: clientInfo?.task1Done || false, task2Done: clientInfo?.task2Done || false, task3Done: clientInfo?.task3Done || false,
+        // --- CHALLENGE BAR PERCENTAGES ---
+        percWater: Math.min(100, Math.round((avgWater / 2.5) * 100)),
+        percTraining: Math.min(100, Math.round((trainingsCount / 3) * 100)),
+        percSleep: Math.min(100, Math.round((avgSleep / 7) * 100)),
+        percProtein: Math.min(100, Math.round((avgProtein / 160) * 100)),
+        percMovement: Math.min(100, Math.round((avgSteps / 10000) * 100))
     };
-  }, [submissions, formData.clientName]);
+  }, [submissions, clients, formData.clientName]);
+
+  const toggleClientTask = async (taskIndex) => {
+      const field = `task${taskIndex}Done`;
+      const currentVal = clientData[field];
+      await updateClientField(clientData.clientId, field, !currentVal);
+  };
 
   if (view === 'login') {
     return (
@@ -332,12 +417,51 @@ const App = () => {
                 <div className="space-y-3">
                     <h3 className="text-[10px] font-black uppercase text-slate-400 ml-2 italic">Huidige Klanten ({clients.length})</h3>
                     {clients.map(c => (
-                        <div key={c.id} className="bg-white p-4 rounded-2xl flex justify-between items-center shadow-sm border border-slate-100">
-                            <div>
-                                <p className="font-black italic text-sm text-slate-800 uppercase tracking-tight">{c.name}</p>
-                                <p className="text-[10px] font-bold text-red-500 uppercase tracking-widest">Code: {c.code}</p>
+                        <div key={c.id} className="bg-white p-4 rounded-2xl flex flex-col gap-4 shadow-sm border border-slate-100">
+                            <div className="flex justify-between items-center">
+                                <div>
+                                    <p className="font-black italic text-sm text-slate-800 uppercase tracking-tight">{c.name}</p>
+                                    <p className="text-[10px] font-bold text-red-500 uppercase tracking-widest">Code: {c.code}</p>
+                                </div>
+                                <button onClick={() => deleteClient(c.id)} className="p-2 text-slate-300 hover:text-red-500"><Trash2 size={18}/></button>
                             </div>
-                            <button onClick={() => deleteClient(c.id)} className="p-2 text-slate-300 hover:text-red-500"><Trash2 size={18}/></button>
+                            <div className="grid grid-cols-1 gap-2">
+                                <div className="flex gap-2">
+                                    <input 
+                                        type="text" 
+                                        defaultValue={c.schemaUrl} 
+                                        placeholder="PDF Link (Schema)" 
+                                        className="flex-1 bg-gray-50 border-none rounded-xl p-3 text-[10px] font-bold outline-none"
+                                        onBlur={(e) => updateClientField(c.id, 'schemaUrl', e.target.value)}
+                                    />
+                                    <div className="bg-slate-100 p-3 rounded-xl text-slate-400"><FileText size={14}/></div>
+                                </div>
+                                <div className="flex gap-2">
+                                    <input 
+                                        type="text" 
+                                        defaultValue={c.weeklyChallenge} 
+                                        placeholder="Wekelijkse Challenge (Focus tekst)" 
+                                        className="flex-1 bg-gray-50 border-none rounded-xl p-3 text-[10px] font-bold outline-none"
+                                        onBlur={(e) => updateClientField(c.id, 'weeklyChallenge', e.target.value)}
+                                    />
+                                    <div className="bg-slate-100 p-3 rounded-xl text-blue-500"><Zap size={14}/></div>
+                                </div>
+                                <div className="grid grid-cols-1 gap-2 mt-2 border-t pt-2 border-slate-50">
+                                    <p className="text-[9px] font-black uppercase italic text-slate-400">Opdrachten om af te vinken:</p>
+                                    {[1, 2, 3].map(i => (
+                                        <div key={i} className="flex gap-2">
+                                            <input 
+                                                type="text" 
+                                                defaultValue={c[`task${i}`]} 
+                                                placeholder={`Opdracht ${i}`} 
+                                                className="flex-1 bg-gray-50 border-none rounded-xl p-3 text-[10px] font-bold outline-none"
+                                                onBlur={(e) => updateClientField(c.id, `task${i}`, e.target.value)}
+                                            />
+                                            <div className="bg-slate-100 p-3 rounded-xl text-green-500"><ListTodo size={14}/></div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
                         </div>
                     ))}
                 </div>
@@ -352,17 +476,14 @@ const App = () => {
                 {filteredSubmissions.map(sub => {
                 const needsAttention = (Number(sub.motivation) <= 4 || Number(sub.energy) <= 4 || Number(sub.mentalStress) >= 8);
                 const isChecked = checkedIds.has(sub.id);
-                
                 return (
                     <div key={sub.id} className={`relative transition-all duration-300 ${isChecked ? 'opacity-60 scale-[0.98]' : ''}`}>
                     <Card title={sub.clientName} subtitle={sub.date} alert={needsAttention && !isChecked} className={`!mb-0`}>
-                        
                         {sub.photoBase64 && (
                             <div className="mb-4 mt-2 rounded-xl overflow-hidden border border-slate-100">
                                 <img src={sub.photoBase64} alt="Progressie" className="w-full h-48 object-cover" />
                             </div>
                         )}
-
                         <div className="bg-slate-50 text-slate-800 p-4 rounded-2xl text-[10px] font-mono whitespace-pre-wrap mb-4 border border-slate-100">
                         {`*DATA:* ${sub.weight || '-'}kg | ${sub.sleepHours}u slaap\n*GEEST:* En: ${sub.energy} | Mo: ${sub.motivation} | Str: ${sub.mentalStress}\n*VOEDING:* Water: ${sub.waterLiters || '-'}L | Eiwit: ${sub.proteinGrams || '-'}g\n*TRAINING:* RPE: ${getRpeLabel(sub.trainingRpe)}\n*WIN:* ${sub.biggestWin || 'Geen'}`}
                         </div>
@@ -400,59 +521,101 @@ const App = () => {
       </div>
 
       <div className="max-w-2xl mx-auto px-4">
-        {/* NIEUWE TAB SCHAKELAAR */}
         {step === 'form' && (
             <div className="flex bg-gray-100 p-1.5 rounded-3xl mb-8">
-                <button 
-                    onClick={() => setClientTab('dashboard')}
-                    className={`flex-1 py-3 rounded-[1.4rem] text-[10px] font-black uppercase italic transition-all flex items-center justify-center gap-2 ${clientTab === 'dashboard' ? 'bg-white shadow-sm text-red-600' : 'text-slate-400'}`}
-                >
+                <button onClick={() => setClientTab('dashboard')} className={`flex-1 py-3 rounded-[1.4rem] text-[10px] font-black uppercase italic transition-all flex items-center justify-center gap-2 ${clientTab === 'dashboard' ? 'bg-white shadow-sm text-red-600' : 'text-slate-400'}`}>
                     <BarChart3 size={14}/> Dashboard
                 </button>
-                <button 
-                    onClick={() => setClientTab('form')}
-                    className={`flex-1 py-3 rounded-[1.4rem] text-[10px] font-black uppercase italic transition-all flex items-center justify-center gap-2 ${clientTab === 'form' ? 'bg-white shadow-sm text-red-600' : 'text-slate-400'}`}
-                >
+                <button onClick={() => setClientTab('form')} className={`flex-1 py-3 rounded-[1.4rem] text-[10px] font-black uppercase italic transition-all flex items-center justify-center gap-2 ${clientTab === 'form' ? 'bg-white shadow-sm text-red-600' : 'text-slate-400'}`}>
                     <Activity size={14}/> Check-in
+                </button>
+                <button onClick={() => setClientTab('schemas')} className={`flex-1 py-3 rounded-[1.4rem] text-[10px] font-black uppercase italic transition-all flex items-center justify-center gap-2 ${clientTab === 'schemas' ? 'bg-white shadow-sm text-red-600' : 'text-slate-400'}`}>
+                    <FileText size={14}/> Schema's
                 </button>
             </div>
         )}
 
         {step === 'form' ? (
           clientTab === 'dashboard' ? (
-            /* --- NIEUWE DASHBOARD VIEW --- */
             <div className="animate-in fade-in slide-in-from-left-4 duration-500">
                 <div className="mb-8">
                     <h2 className="text-2xl font-black italic uppercase tracking-tight text-slate-800">Welkom terug, {formData.clientName}! 👋</h2>
-                    <p className="text-[10px] font-bold text-slate-400 uppercase italic">Hier is je voortgang tot nu toe</p>
+                    <p className="text-[10px] font-bold text-red-600 uppercase italic">
+                        {clientData.streak > 2 ? 'Je bent on fire! 🔥 Houd dit vast!' : 'Lekker bezig, klaar voor je volgende check-in?'}
+                    </p>
                 </div>
+
+                {clientData.weeklyChallenge && (
+                    <div className="bg-blue-50 border border-blue-200 rounded-[2rem] p-5 mb-6 flex items-center gap-4 shadow-sm relative overflow-hidden">
+                        <Zap className="text-blue-400 fill-blue-400 absolute right-[-10px] bottom-[-10px] opacity-20" size={64} />
+                        <div className="bg-white p-3 rounded-full shadow-sm"><Zap size={20} className="text-blue-500" /></div>
+                        <div className="relative z-10">
+                            <p className="text-[9px] font-black uppercase italic text-blue-600 mb-0.5">Focus van de Week</p>
+                            <p className="text-sm font-bold text-slate-800 italic">{clientData.weeklyChallenge}</p>
+                        </div>
+                    </div>
+                )}
+
+                {/* --- WEKELIJKSE CHALLENGES (VOORTGANGS BALKEN) --- */}
+                <Card title="Wekelijkse Challenges" icon={Zap}>
+                    <ChallengeBar label="Water (2.5L)" percentage={clientData.percWater} />
+                    <ChallengeBar label="Training (3x)" percentage={clientData.percTraining} />
+                    <ChallengeBar label="Slaap (7U+)" percentage={clientData.percSleep} />
+                    <ChallengeBar label="Voeding (Eiwit)" percentage={clientData.percProtein} />
+                    <ChallengeBar label="Movement (10K)" percentage={clientData.percMovement} />
+                </Card>
+
+                {/* --- MIJN OPDRACHTEN (AFVINKBAAR) --- */}
+                {(clientData.task1 || clientData.task2 || clientData.task3) && (
+                    <Card title="Mijn Opdrachten" icon={ListTodo}>
+                        <div className="space-y-3">
+                            {[1, 2, 3].map(i => clientData[`task${i}`] && (
+                                <div key={i} className="flex items-center gap-3 p-4 bg-slate-50 rounded-2xl transition-all">
+                                    <input 
+                                        type="checkbox" 
+                                        checked={clientData[`task${i}Done`]} 
+                                        onChange={() => toggleClientTask(i)}
+                                        className="w-6 h-6 rounded-lg text-red-600 focus:ring-red-500 border-none bg-white shadow-sm"
+                                    />
+                                    <span className={`text-xs font-black uppercase italic ${clientData[`task${i}Done`] ? 'text-slate-300 line-through' : 'text-slate-700'}`}>
+                                        {clientData[`task${i}`]}
+                                    </span>
+                                </div>
+                            ))}
+                        </div>
+                    </Card>
+                )}
 
                 <div className="grid grid-cols-2 gap-4 mb-6">
                     <div className="bg-slate-900 rounded-[2rem] p-6 text-white shadow-xl relative overflow-hidden">
                         <TrendingDown className="absolute right-[-10px] bottom-[-10px] text-white/10" size={80} />
-                        <p className="text-[10px] font-black uppercase italic text-white/60 mb-1">Totaal Verloren</p>
+                        <p className="text-[10px] font-black uppercase italic text-white/60 mb-1">Gewichtsverlies</p>
                         <p className="text-3xl font-black italic tracking-tighter">{clientData.weightDiff}</p>
                     </div>
                     <div className="bg-white rounded-[2rem] p-6 border border-slate-100 shadow-sm relative overflow-hidden">
-                        <Flame className="absolute right-[-10px] bottom-[-10px] text-red-500/5" size={80} />
-                        <p className="text-[10px] font-black uppercase italic text-slate-400 mb-1">Check-ins</p>
-                        <p className="text-3xl font-black italic tracking-tighter text-slate-800">{clientData.count}</p>
+                        <Flame className={`absolute right-[-10px] bottom-[-10px] ${clientData.streak > 2 ? 'text-red-500/20' : 'text-slate-500/5'}`} size={80} />
+                        <p className="text-[10px] font-black uppercase italic text-slate-400 mb-1">Check-in Streak</p>
+                        <p className="text-3xl font-black italic tracking-tighter text-slate-800">{clientData.streak} Dagen 🔥</p>
                     </div>
                 </div>
 
-                <Card title="Laatste Metingen" icon={Activity}>
-                    <div className="space-y-4">
-                        <div className="flex justify-between items-center bg-slate-50 p-4 rounded-2xl">
-                            <span className="text-[10px] font-black uppercase italic text-slate-400">Huidig Gewicht</span>
-                            <span className="font-black italic text-red-600">{clientData.lastWeight} kg</span>
-                        </div>
-                        <div className="flex justify-between items-center bg-slate-50 p-4 rounded-2xl">
-                            <span className="text-[10px] font-black uppercase italic text-slate-400">Gemiddelde Energie</span>
-                            <span className="font-black italic text-slate-800">{clientData.avgEnergy}/10</span>
-                        </div>
+                <div className="grid grid-cols-3 gap-3 mb-6">
+                    <div className="bg-white p-4 rounded-2xl border border-slate-50 text-center shadow-sm">
+                        <p className="text-[8px] font-black text-slate-400 uppercase italic mb-1">Energie</p>
+                        <p className="text-sm font-black text-red-600 italic">{clientData.avgEnergy}/10</p>
                     </div>
-                </Card>
+                    <div className="bg-white p-4 rounded-2xl border border-slate-50 text-center shadow-sm">
+                        <p className="text-[8px] font-black text-slate-400 uppercase italic mb-1">Slaap</p>
+                        <p className="text-sm font-black text-slate-800 italic">{clientData.avgSleep}u</p>
+                    </div>
+                    <div className="bg-white p-4 rounded-2xl border border-slate-50 text-center shadow-sm">
+                        <p className="text-[8px] font-black text-slate-400 uppercase italic mb-1">Stappen</p>
+                        <p className="text-sm font-black text-slate-800 italic">{clientData.avgSteps}</p>
+                    </div>
+                </div>
 
+                <Card title="Gewichtsverloop" icon={TrendingDown}><WeightChart data={clientData.chartData} /></Card>
+                
                 <Card title="Recente Historie" icon={Calendar}>
                     <div className="space-y-3">
                         {clientData.history.map((h, i) => (
@@ -461,47 +624,57 @@ const App = () => {
                                 <span className="text-[10px] font-black italic text-slate-800">{h.weight}kg | En: {h.energy}</span>
                             </div>
                         ))}
-                        {clientData.history.length === 0 && <p className="text-center py-4 text-[10px] font-bold text-slate-300 uppercase">Nog geen data beschikbaar</p>}
                     </div>
                 </Card>
 
-                <button 
-                    onClick={() => setClientTab('form')}
-                    className="w-full py-5 bg-slate-900 text-white rounded-[2rem] font-black italic uppercase shadow-xl flex items-center justify-center gap-3 active:scale-[0.98] transition-all"
-                >
+                <button onClick={() => setClientTab('form')} className="w-full py-5 bg-slate-900 text-white rounded-[2rem] font-black italic uppercase shadow-xl flex items-center justify-center gap-3 active:scale-[0.98] transition-all">
                     Vul nieuwe check-in in <ChevronRight size={18}/>
                 </button>
             </div>
+          ) : clientTab === 'schemas' ? (
+            <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 min-h-[60vh]">
+                <div className="mb-8 text-center">
+                    <h2 className="text-2xl font-black italic uppercase tracking-tight text-slate-800">Jouw Schema's 📋</h2>
+                </div>
+                {clientData.schemaUrl ? (
+                    <div className="w-full h-[70vh] rounded-[2rem] overflow-hidden border-4 border-white shadow-2xl relative bg-slate-100">
+                        <iframe 
+                            src={`${clientData.schemaUrl}#toolbar=0&navpanes=0&scrollbar=0`} 
+                            className="w-full h-full"
+                            frameBorder="0"
+                        ></iframe>
+                    </div>
+                ) : (
+                    <div className="text-center py-20 bg-white rounded-[2rem] border border-dashed border-slate-200">
+                        <FileText size={48} className="mx-auto text-slate-200 mb-4" />
+                        <p className="text-[10px] font-black uppercase text-slate-400 italic">Nog geen schema geüpload</p>
+                    </div>
+                )}
+            </div>
           ) : (
-            /* --- BESTAANDE VRAGENLIJST (NIET VERANDERD) --- */
             <div className="animate-in fade-in slide-in-from-right-4 duration-500">
                 <h2 className="text-3xl font-black italic uppercase text-center mb-10 tracking-tight text-slate-800">Check-in</h2>
-                
                 <Card title="Basis" icon={Users}>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <FormInput name="clientName" value={formData.clientName} readOnly className="opacity-50" />
                         <FormInput type="date" name="date" value={formData.date} onChange={handleChange} />
                     </div>
                 </Card>
-
                 <Card title="Metingen" icon={TrendingDown}>
                     <div className="grid grid-cols-2 gap-4">
                         <FormInput label="Gewicht (kg)" type="number" name="weight" placeholder="00.0" value={formData.weight} onChange={handleChange} />
                         <FormInput label="Slaap (u)" type="number" name="sleepHours" value={formData.sleepHours} onChange={handleChange} />
                     </div>
                 </Card>
-
                 <Card title="Mentale Staat" icon={Smile}>
                     <SliderField label="Motivatie" name="motivation" value={formData.motivation} onChange={handleChange} />
                     <SliderField label="Energie" name="energy" value={formData.energy} onChange={handleChange} />
                     <SliderField label="Stress" name="mentalStress" value={formData.mentalStress} onChange={handleChange} />
                 </Card>
-
                 <Card title="Herstel & Gezondheid" icon={Stethoscope}>
                     <FormInput name="illnessSigns" placeholder="Ziekteverschijnselen?" value={formData.illnessSigns} onChange={handleChange} />
                     <FormInput name="musclePain" placeholder="Waar heb je spierpijn?" value={formData.musclePain} onChange={handleChange} />
                 </Card>
-
                 <Card title="Hydratatie & Cyclus" icon={Droplets}>
                     <SliderField label="Waterinname" name="waterLiters" value={formData.waterLiters} min="0" max="6" step="0.5" unit=" L" onChange={handleChange} />
                     <div className="grid grid-cols-2 gap-4">
@@ -514,7 +687,6 @@ const App = () => {
                         </div>
                     </div>
                 </Card>
-
                 <Card title="Voeding & Spijsvertering" icon={Apple}>
                     <SliderField label="Honger" name="hunger" value={formData.hunger} onChange={handleChange} />
                     <FormInput name="cravings" placeholder="Cravings vandaag?" value={formData.cravings} onChange={handleChange} />
@@ -529,7 +701,6 @@ const App = () => {
                     </div>
                     <FormInput name="bloating" placeholder="Opgeblazen gevoel?" value={formData.bloating} onChange={handleChange} />
                 </Card>
-
                 <Card title="Training" icon={Dumbbell}>
                     <label className="flex items-center gap-3 p-4 bg-gray-50 rounded-2xl cursor-pointer mb-6 shadow-sm">
                         <input type="checkbox" name="trainingDay" checked={formData.trainingDay} onChange={handleChange} className="w-5 h-5 rounded text-red-600" />
@@ -550,14 +721,12 @@ const App = () => {
                     </div>
                     <textarea name="trainingDetails" placeholder="Details?" value={formData.trainingDetails} onChange={handleChange} className="w-full bg-gray-50 border-none rounded-2xl p-5 text-sm font-bold outline-none shadow-sm min-h-[80px]" />
                 </Card>
-
                 <Card title="Leefstijl & Mindset" icon={Brain}>
                     <FormInput icon={Smartphone} label="Schermtijd (u)" type="number" name="screenTime" placeholder="Bijv. 4" value={formData.screenTime} onChange={handleChange} />
                     <SliderField label="Cijfer voor je dag" name="dailyRating" value={formData.dailyRating} onChange={handleChange} />
                     <FormInput name="gratefulFor" placeholder="Dankbaar voor?" value={formData.gratefulFor} onChange={handleChange} />
                     <FormInput name="biggestChallenge" placeholder="Grootste uitdaging?" value={formData.biggestChallenge} onChange={handleChange} />
                 </Card>
-
                 <Card title="Reflectie & Foto" icon={Target}>
                     <FormInput icon={Trophy} name="biggestWin" placeholder="Grootste winst?" value={formData.biggestWin} onChange={handleChange} />
                     <label className="flex items-center gap-3 p-4 bg-gray-50 rounded-2xl cursor-pointer mb-6 shadow-sm">
@@ -580,7 +749,6 @@ const App = () => {
                         )}
                     </div>
                 </Card>
-
                 <div className="mt-8 pb-10">
                   <button onClick={handleSubmit} disabled={isSubmitting} style={{ backgroundColor: BRAND_RED }} className="w-full py-5 text-white rounded-3xl font-black italic uppercase shadow-xl flex items-center justify-center gap-3 active:scale-[0.98] transition-transform">
                     <Activity size={18} /> {isSubmitting ? "Bezig..." : "Update Dashboard"}
