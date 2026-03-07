@@ -1,0 +1,609 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>For-Effect Ultimate - Progress Edition</title>
+    
+    <link rel="apple-touch-icon" href="icon.png">
+    <link rel="icon" type="image/png" href="icon.png">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="For-Effect">
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    
+    <script type="importmap">
+    {
+      "imports": {
+        "react": "https://esm.sh/react@18.2.0",
+        "react-dom": "https://esm.sh/react-dom@18.2.0",
+        "react-dom/client": "https://esm.sh/react-dom@18.2.0/client",
+        "lucide-react": "https://esm.sh/lucide-react@0.344.0",
+        "firebase/app": "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js",
+        "firebase/firestore": "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js",
+        "firebase/auth": "https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js"
+      }
+    }
+    </script>
+</head>
+<body class="bg-[#FDFDFD]">
+    <div id="root"></div>
+
+    <script type="text/babel" data-type="module">
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { createRoot } from 'react-dom/client';
+import { 
+  Calendar, Smile, CheckCircle2, Users, MessageCircle, TrendingDown, 
+  Lock, X, Trophy, Target, Activity, Dumbbell, Apple, 
+  Stethoscope, ChevronRight, Droplets, Camera, Check, Brain, Smartphone, AlertCircle, Trash2, Eye, EyeOff, Search, UserPlus, Flame, BarChart3
+} from 'lucide-react';
+import { initializeApp } from 'firebase/app';
+import { getFirestore, collection, addDoc, onSnapshot, query, serverTimestamp, doc, deleteDoc, setDoc, getDocs } from 'firebase/firestore';
+import { getAuth, signInAnonymously } from 'firebase/auth';
+
+const firebaseConfig = {
+  apiKey: "AIzaSyDRMrpzIqTIhScdRtjC775wXrgE5x5pDz8",
+  authDomain: "coaching-platform-77639.firebaseapp.com",
+  projectId: "coaching-platform-77639",
+  storageBucket: "coaching-platform-77639.appspot.com",
+  messagingSenderId: "231075823082",
+  appId: "1:231075823082:web:1f881fdb2164155b508693"
+};
+
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
+const BRAND_RED = "#E31E24";
+const COACH_PIN = "5713"; 
+
+// --- UI COMPONENTS ---
+const Card = ({ children, title, icon: Icon, className = "", subtitle, alert }) => (
+  <div className={`bg-white rounded-[2rem] p-6 shadow-sm border transition-all ${alert ? 'border-red-500 bg-red-50/10' : 'border-gray-100'} mb-6 ${className}`}>
+    {title && (
+      <div className="flex justify-between items-start mb-6 border-b border-gray-50 pb-3">
+        <div className="flex items-center gap-2">
+          {Icon && <Icon size={18} style={{ color: alert ? '#ef4444' : BRAND_RED }} />}
+          <div>
+            <h2 className="text-sm font-black italic uppercase tracking-wider text-slate-800">
+                {title} {alert && <span className="text-red-600 ml-2 animate-pulse font-black text-[10px]">⚠️ LET OP!</span>}
+            </h2>
+            {subtitle && <p className="text-[10px] text-slate-400 font-bold uppercase italic">{subtitle}</p>}
+          </div>
+        </div>
+      </div>
+    )}
+    {children}
+  </div>
+);
+
+const FormInput = ({ label, name, value, onChange, type = "text", placeholder, icon: Icon, ...props }) => (
+  <div className="relative w-full mb-4">
+    {label && <label className="text-[10px] font-bold text-slate-400 uppercase block mb-1 ml-1">{label}</label>}
+    <div className="relative">
+        {Icon && <Icon size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />}
+        <input 
+            type={type} name={name} placeholder={placeholder} value={value} onChange={onChange} 
+            className={`w-full bg-gray-50 border-none rounded-2xl py-4 pr-4 ${Icon ? 'pl-14' : 'pl-5'} text-sm font-bold outline-none focus:ring-2 focus:ring-red-500 transition-all text-slate-800 shadow-sm`}
+            {...props}
+        />
+    </div>
+  </div>
+);
+
+const SliderField = ({ label, name, value, onChange, max = "10", min = "1", step = "1", unit = "/10" }) => (
+  <div className="mb-6 px-1">
+    <div className="flex justify-between text-[10px] font-black uppercase text-slate-400 mb-3 italic">
+      <span>{label}</span>
+      <span className="text-red-600 font-black">{value}{unit}</span>
+    </div>
+    <input type="range" name={name} min={min} max={max} step={step} value={value} onChange={onChange} className="w-full h-2 bg-gray-100 rounded-lg appearance-none cursor-pointer accent-[#E31E24]" />
+  </div>
+);
+
+// --- MAIN APP ---
+const App = () => {
+  const [view, setView] = useState('login'); 
+  const [clientTab, setClientTab] = useState('dashboard'); // NIEUW: Dashboard vs Form
+  const [step, setStep] = useState('form');
+  const [submissions, setSubmissions] = useState([]);
+  const [clients, setClients] = useState([]);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showPinModal, setShowPinModal] = useState(false);
+  const [showClientAdmin, setShowClientAdmin] = useState(false);
+  const [pinInput, setPinInput] = useState('');
+  const [pinError, setPinError] = useState(false);
+  const [checkedIds, setCheckedIds] = useState(new Set());
+  
+  const [loginName, setLoginName] = useState(localStorage.getItem('fe_name') || '');
+  const [loginCode, setLoginCode] = useState('');
+  const [loginError, setLoginError] = useState('');
+
+  const [newClientName, setNewClientName] = useState('');
+  const [newClientCode, setNewClientCode] = useState('');
+
+  const [formData, setFormData] = useState({
+    clientName: '',
+    date: new Date().toISOString().split('T')[0],
+    weight: '', sleepHours: 7, motivation: 5, energy: 5, mentalStress: 3,
+    illnessSigns: '', musclePain: '', hunger: 3, cravings: '',
+    bowelFrequency: 1, bowelQuality: 'Normaal', bloating: '',
+    trainingDay: false, trainingDetails: '', steps: '', calories: '',
+    trainingDuration: '', trainingRpe: '7',
+    supplements: true, biggestWin: '', focusTomorrow: '', waterLiters: 2.5, 
+    proteinGrams: '', cyclePhase: 'N.v.t.', photoBase64: '',
+    screenTime: '', dailyRating: 7, gratefulFor: '', biggestChallenge: ''
+  });
+
+  useEffect(() => {
+    signInAnonymously(auth).catch(console.error);
+    const unsubSub = onSnapshot(collection(db, 'checkins'), (snapshot) => {
+      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))
+        .sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
+      setSubmissions(data);
+    });
+    const unsubCli = onSnapshot(collection(db, 'clients'), (snapshot) => {
+      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setClients(data);
+    });
+    return () => { unsubSub(); unsubCli(); };
+  }, []);
+
+  const handleClientLogin = (e) => {
+    e.preventDefault();
+    const client = clients.find(c => 
+      c.name.trim().toLowerCase() === loginName.trim().toLowerCase() && 
+      String(c.code).trim() === loginCode.trim()
+    );
+    
+    if (client) {
+      setFormData(prev => ({ ...prev, clientName: client.name }));
+      localStorage.setItem('fe_name', client.name);
+      setView('client');
+      setLoginError('');
+    } else {
+      setLoginError('Naam of code niet gevonden');
+    }
+  };
+
+  const handleAddClient = async (e) => {
+    e.preventDefault();
+    if (!newClientName || !newClientCode) return;
+    try {
+      await addDoc(collection(db, 'clients'), {
+        name: newClientName.trim(),
+        code: newClientCode.trim(),
+        createdAt: serverTimestamp()
+      });
+      setNewClientName('');
+      setNewClientCode('');
+    } catch (err) { alert("Fout bij toevoegen klant"); }
+  };
+
+  const deleteClient = async (id) => {
+    if (window.confirm("Klant toegang intrekken?")) await deleteDoc(doc(db, 'clients', id));
+  };
+
+  const handleChange = useCallback((e) => {
+    const { name, value, type, checked } = e.target;
+    setFormData(prev => ({ ...prev, [name]: type === 'checkbox' ? checked : value }));
+  }, []);
+
+  const handleImageUpload = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        const MAX_WIDTH = 600;
+        canvas.width = MAX_WIDTH;
+        canvas.height = img.height * (MAX_WIDTH / img.width);
+        canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+        setFormData(prev => ({ ...prev, photoBase64: canvas.toDataURL('image/jpeg', 0.6) }));
+      };
+      img.src = event.target.result;
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handlePinSubmit = (e) => {
+    e.preventDefault();
+    if (pinInput === COACH_PIN) { setView('coach'); setShowPinModal(false); setPinInput(''); setPinError(false); }
+    else { setPinError(true); setPinInput(''); }
+  };
+
+  const handleSubmit = async () => {
+    setIsSubmitting(true);
+    try {
+      await addDoc(collection(db, 'checkins'), { ...formData, createdAt: serverTimestamp() });
+      setStep('summary');
+    } catch (err) { alert("Fout bij verzenden."); } finally { setIsSubmitting(false); }
+  };
+
+  const deleteSubmission = async (id) => {
+    if (window.confirm("Zeker weten?")) await deleteDoc(doc(db, 'checkins', id));
+  };
+
+  const toggleCheck = (id) => {
+    const newChecked = new Set(checkedIds);
+    if (newChecked.has(id)) newChecked.delete(id);
+    else newChecked.add(id);
+    setCheckedIds(newChecked);
+  };
+
+  const getRpeLabel = (val) => {
+    const labels = { "5": "5 - Gemiddeld", "6": "6 - Pittig", "7": "7 - Zwaar", "8": "8 - Zeer Zwaar", "9": "9 - Maximaal", "10": "10 - Tot Falen" };
+    return labels[val] || val;
+  };
+
+  const filteredSubmissions = useMemo(() => {
+    return submissions.filter(s => (s.clientName || "").toLowerCase().includes(searchTerm.toLowerCase()));
+  }, [submissions, searchTerm]);
+
+  // NIEUW: Progressie data berekenen voor de huidige cliënt
+  const clientData = useMemo(() => {
+    const data = submissions.filter(s => s.clientName === formData.clientName);
+    const lastWeight = data[0]?.weight || '0';
+    const firstWeight = data[data.length - 1]?.weight || '0';
+    const weightDiff = (Number(firstWeight) - Number(lastWeight)).toFixed(1);
+    return {
+        count: data.length,
+        lastWeight,
+        weightDiff: weightDiff > 0 ? `-${weightDiff}kg` : `${Math.abs(weightDiff)}kg`,
+        avgEnergy: data.length > 0 ? (data.reduce((acc, curr) => acc + Number(curr.energy), 0) / data.length).toFixed(1) : 0,
+        history: data.slice(0, 5) // Laatste 5 voor mini-overzicht
+    };
+  }, [submissions, formData.clientName]);
+
+  if (view === 'login') {
+    return (
+        <div className="min-h-screen bg-[#FDFDFD] flex items-center justify-center p-4">
+            <div className="w-full max-w-md">
+                <div className="flex justify-center mb-8">
+                    <div className="bg-[#E31E24] text-white px-6 py-2 font-black italic text-3xl skew-x-[-10deg] tracking-tighter uppercase">FOR-EFFECT</div>
+                </div>
+                <Card title="Client Inloggen" icon={Lock}>
+                    <form onSubmit={handleClientLogin} className="space-y-4">
+                        <FormInput icon={Users} placeholder="Je Naam" value={loginName} onChange={(e) => setLoginName(e.target.value)} />
+                        <FormInput icon={Lock} type="password" placeholder="Toegangscode" value={loginCode} onChange={(e) => setLoginCode(e.target.value)} />
+                        {loginError && <p className="text-red-500 text-[10px] font-bold uppercase text-center">{loginError}</p>}
+                        <button type="submit" style={{backgroundColor: BRAND_RED}} className="w-full py-4 text-white rounded-2xl font-black italic uppercase shadow-lg active:scale-95 transition-all">Start Check-in</button>
+                    </form>
+                </Card>
+                <div className="text-center">
+                    <button onClick={() => setShowPinModal(true)} className="text-[10px] font-black text-slate-300 uppercase italic hover:text-slate-500">Coach Login</button>
+                </div>
+            </div>
+            {showPinModal && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/95 backdrop-blur-sm p-4">
+                    <div className="bg-white w-full max-w-sm rounded-[2.5rem] p-8 relative">
+                        <button onClick={() => setShowPinModal(false)} className="absolute right-6 top-6 text-slate-300"><X size={24}/></button>
+                        <div className="flex flex-col items-center">
+                            <Lock size={32} className="text-red-600 mb-4" />
+                            <h3 className="text-xl font-black italic uppercase mb-8">Coach Dashboard</h3>
+                            <form onSubmit={handlePinSubmit} className="w-full space-y-4">
+                                <input type="password" placeholder="****" value={pinInput} onChange={(e) => setPinInput(e.target.value)} className="w-full bg-slate-50 border-none rounded-2xl p-5 text-center text-2xl font-black tracking-[1em] outline-none" />
+                                <button type="submit" className="w-full py-4 bg-slate-900 text-white rounded-2xl font-black italic uppercase">Inloggen</button>
+                                {pinError && <p className="text-red-500 text-[10px] font-bold text-center uppercase">Onjuiste PIN</p>}
+                            </form>
+                        </div>
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+  }
+
+  if (view === 'coach') {
+    return (
+      <div className="min-h-screen bg-[#FDFDFD] p-4 md:p-8">
+        <div className="max-w-6xl mx-auto">
+          <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-10 gap-4">
+            <div>
+                <div className="bg-[#E31E24] text-white px-6 py-2 font-black italic text-2xl skew-x-[-10deg] uppercase tracking-tighter inline-block">FOR-EFFECT COACH</div>
+                <div className="flex items-center gap-2 mt-2">
+                    <span className="bg-red-100 text-red-600 px-3 py-1 rounded-full text-[10px] font-black uppercase italic">
+                        {submissions.length - checkedIds.size} Nieuwe Check-ins
+                    </span>
+                </div>
+            </div>
+            <div className="flex gap-2 w-full md:w-auto">
+                <button onClick={() => setShowClientAdmin(!showClientAdmin)} className="px-4 py-2 bg-red-600 text-white rounded-xl text-[10px] font-black uppercase italic flex items-center gap-2">
+                    {showClientAdmin ? <ChevronRight size={14}/> : <UserPlus size={14}/>}
+                    {showClientAdmin ? "Check-ins" : "Beheer Cliënten"}
+                </button>
+                <button onClick={() => setView('login')} className="px-4 py-2 bg-slate-800 text-white rounded-xl text-[10px] font-black uppercase italic">Uitloggen</button>
+            </div>
+          </div>
+          
+          {showClientAdmin ? (
+            <div className="max-w-xl mx-auto animate-in fade-in zoom-in duration-300">
+                <Card title="Nieuwe Klant Toevoegen" icon={UserPlus}>
+                    <form onSubmit={handleAddClient} className="flex flex-col gap-4">
+                        <FormInput placeholder="Naam Klant" value={newClientName} onChange={(e) => setNewClientName(e.target.value)} />
+                        <FormInput placeholder="Kies Code (bijv 1234)" value={newClientCode} onChange={(e) => setNewClientCode(e.target.value)} />
+                        <button type="submit" className="bg-slate-900 text-white py-4 rounded-2xl font-black uppercase italic text-xs">Toevoegen</button>
+                    </form>
+                </Card>
+                <div className="space-y-3">
+                    <h3 className="text-[10px] font-black uppercase text-slate-400 ml-2 italic">Huidige Klanten ({clients.length})</h3>
+                    {clients.map(c => (
+                        <div key={c.id} className="bg-white p-4 rounded-2xl flex justify-between items-center shadow-sm border border-slate-100">
+                            <div>
+                                <p className="font-black italic text-sm text-slate-800 uppercase tracking-tight">{c.name}</p>
+                                <p className="text-[10px] font-bold text-red-500 uppercase tracking-widest">Code: {c.code}</p>
+                            </div>
+                            <button onClick={() => deleteClient(c.id)} className="p-2 text-slate-300 hover:text-red-500"><Trash2 size={18}/></button>
+                        </div>
+                    ))}
+                </div>
+            </div>
+          ) : (
+            <>
+            <div className="relative mb-6 max-w-md">
+                <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+                <input type="text" placeholder="Zoek klant..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full bg-white border border-slate-100 rounded-xl py-2 pl-12 pr-4 text-sm font-bold shadow-sm outline-none" />
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {filteredSubmissions.map(sub => {
+                const needsAttention = (Number(sub.motivation) <= 4 || Number(sub.energy) <= 4 || Number(sub.mentalStress) >= 8);
+                const isChecked = checkedIds.has(sub.id);
+                
+                return (
+                    <div key={sub.id} className={`relative transition-all duration-300 ${isChecked ? 'opacity-60 scale-[0.98]' : ''}`}>
+                    <Card title={sub.clientName} subtitle={sub.date} alert={needsAttention && !isChecked} className={`!mb-0`}>
+                        
+                        {sub.photoBase64 && (
+                            <div className="mb-4 mt-2 rounded-xl overflow-hidden border border-slate-100">
+                                <img src={sub.photoBase64} alt="Progressie" className="w-full h-48 object-cover" />
+                            </div>
+                        )}
+
+                        <div className="bg-slate-50 text-slate-800 p-4 rounded-2xl text-[10px] font-mono whitespace-pre-wrap mb-4 border border-slate-100">
+                        {`*DATA:* ${sub.weight || '-'}kg | ${sub.sleepHours}u slaap\n*GEEST:* En: ${sub.energy} | Mo: ${sub.motivation} | Str: ${sub.mentalStress}\n*VOEDING:* Water: ${sub.waterLiters || '-'}L | Eiwit: ${sub.proteinGrams || '-'}g\n*TRAINING:* RPE: ${getRpeLabel(sub.trainingRpe)}\n*WIN:* ${sub.biggestWin || 'Geen'}`}
+                        </div>
+                        <div className="grid grid-cols-2 gap-2">
+                            <button onClick={() => toggleCheck(sub.id)} className={`py-3 rounded-xl font-black uppercase italic text-[9px] flex items-center justify-center gap-2 transition-all ${isChecked ? 'bg-green-600 text-white' : 'bg-blue-50 text-blue-600'}`}>
+                            {isChecked ? <><EyeOff size={12}/> Heropen</> : <><Check size={12}/> Afvinken</>}
+                            </button>
+                            <button onClick={() => deleteSubmission(sub.id)} className="py-3 bg-red-50 text-red-500 rounded-xl font-black uppercase italic text-[9px] flex items-center justify-center gap-2">
+                            <Trash2 size={12}/> Wis
+                            </button>
+                            <button onClick={() => window.open(`https://wa.me/?text=${encodeURIComponent(`Hey ${sub.clientName}, ik heb je check-in gezien!`)}`)} className="col-span-2 py-3 bg-green-50 text-green-600 rounded-xl font-black uppercase italic text-[9px] flex items-center justify-center gap-2">
+                               <MessageCircle size={12}/> Stuur Feedback
+                            </button>
+                        </div>
+                    </Card>
+                    </div>
+                )
+                })}
+            </div>
+            </>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-[#FDFDFD] text-slate-900 pb-20">
+      <div className="max-w-2xl mx-auto px-4 pt-8 mb-8 flex justify-between items-center">
+        <div className="bg-[#E31E24] text-white px-4 py-1 font-black italic text-xl skew-x-[-10deg] tracking-tighter">FOR-EFFECT</div>
+        <button onClick={() => setView('login')} className="flex items-center gap-2 px-3 py-1 bg-slate-100 rounded-full">
+          <span className="text-[10px] font-black text-slate-500 uppercase italic">Logout</span>
+          <Lock size={12} className="text-slate-400" />
+        </button>
+      </div>
+
+      <div className="max-w-2xl mx-auto px-4">
+        {/* NIEUWE TAB SCHAKELAAR */}
+        {step === 'form' && (
+            <div className="flex bg-gray-100 p-1.5 rounded-3xl mb-8">
+                <button 
+                    onClick={() => setClientTab('dashboard')}
+                    className={`flex-1 py-3 rounded-[1.4rem] text-[10px] font-black uppercase italic transition-all flex items-center justify-center gap-2 ${clientTab === 'dashboard' ? 'bg-white shadow-sm text-red-600' : 'text-slate-400'}`}
+                >
+                    <BarChart3 size={14}/> Dashboard
+                </button>
+                <button 
+                    onClick={() => setClientTab('form')}
+                    className={`flex-1 py-3 rounded-[1.4rem] text-[10px] font-black uppercase italic transition-all flex items-center justify-center gap-2 ${clientTab === 'form' ? 'bg-white shadow-sm text-red-600' : 'text-slate-400'}`}
+                >
+                    <Activity size={14}/> Check-in
+                </button>
+            </div>
+        )}
+
+        {step === 'form' ? (
+          clientTab === 'dashboard' ? (
+            /* --- NIEUWE DASHBOARD VIEW --- */
+            <div className="animate-in fade-in slide-in-from-left-4 duration-500">
+                <div className="mb-8">
+                    <h2 className="text-2xl font-black italic uppercase tracking-tight text-slate-800">Welkom terug, {formData.clientName}! 👋</h2>
+                    <p className="text-[10px] font-bold text-slate-400 uppercase italic">Hier is je voortgang tot nu toe</p>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4 mb-6">
+                    <div className="bg-slate-900 rounded-[2rem] p-6 text-white shadow-xl relative overflow-hidden">
+                        <TrendingDown className="absolute right-[-10px] bottom-[-10px] text-white/10" size={80} />
+                        <p className="text-[10px] font-black uppercase italic text-white/60 mb-1">Totaal Verloren</p>
+                        <p className="text-3xl font-black italic tracking-tighter">{clientData.weightDiff}</p>
+                    </div>
+                    <div className="bg-white rounded-[2rem] p-6 border border-slate-100 shadow-sm relative overflow-hidden">
+                        <Flame className="absolute right-[-10px] bottom-[-10px] text-red-500/5" size={80} />
+                        <p className="text-[10px] font-black uppercase italic text-slate-400 mb-1">Check-ins</p>
+                        <p className="text-3xl font-black italic tracking-tighter text-slate-800">{clientData.count}</p>
+                    </div>
+                </div>
+
+                <Card title="Laatste Metingen" icon={Activity}>
+                    <div className="space-y-4">
+                        <div className="flex justify-between items-center bg-slate-50 p-4 rounded-2xl">
+                            <span className="text-[10px] font-black uppercase italic text-slate-400">Huidig Gewicht</span>
+                            <span className="font-black italic text-red-600">{clientData.lastWeight} kg</span>
+                        </div>
+                        <div className="flex justify-between items-center bg-slate-50 p-4 rounded-2xl">
+                            <span className="text-[10px] font-black uppercase italic text-slate-400">Gemiddelde Energie</span>
+                            <span className="font-black italic text-slate-800">{clientData.avgEnergy}/10</span>
+                        </div>
+                    </div>
+                </Card>
+
+                <Card title="Recente Historie" icon={Calendar}>
+                    <div className="space-y-3">
+                        {clientData.history.map((h, i) => (
+                            <div key={i} className="flex justify-between items-center border-b border-gray-50 pb-2 last:border-0">
+                                <span className="text-[10px] font-bold text-slate-500 uppercase">{h.date}</span>
+                                <span className="text-[10px] font-black italic text-slate-800">{h.weight}kg | En: {h.energy}</span>
+                            </div>
+                        ))}
+                        {clientData.history.length === 0 && <p className="text-center py-4 text-[10px] font-bold text-slate-300 uppercase">Nog geen data beschikbaar</p>}
+                    </div>
+                </Card>
+
+                <button 
+                    onClick={() => setClientTab('form')}
+                    className="w-full py-5 bg-slate-900 text-white rounded-[2rem] font-black italic uppercase shadow-xl flex items-center justify-center gap-3 active:scale-[0.98] transition-all"
+                >
+                    Vul nieuwe check-in in <ChevronRight size={18}/>
+                </button>
+            </div>
+          ) : (
+            /* --- BESTAANDE VRAGENLIJST (NIET VERANDERD) --- */
+            <div className="animate-in fade-in slide-in-from-right-4 duration-500">
+                <h2 className="text-3xl font-black italic uppercase text-center mb-10 tracking-tight text-slate-800">Check-in</h2>
+                
+                <Card title="Basis" icon={Users}>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <FormInput name="clientName" value={formData.clientName} readOnly className="opacity-50" />
+                        <FormInput type="date" name="date" value={formData.date} onChange={handleChange} />
+                    </div>
+                </Card>
+
+                <Card title="Metingen" icon={TrendingDown}>
+                    <div className="grid grid-cols-2 gap-4">
+                        <FormInput label="Gewicht (kg)" type="number" name="weight" placeholder="00.0" value={formData.weight} onChange={handleChange} />
+                        <FormInput label="Slaap (u)" type="number" name="sleepHours" value={formData.sleepHours} onChange={handleChange} />
+                    </div>
+                </Card>
+
+                <Card title="Mentale Staat" icon={Smile}>
+                    <SliderField label="Motivatie" name="motivation" value={formData.motivation} onChange={handleChange} />
+                    <SliderField label="Energie" name="energy" value={formData.energy} onChange={handleChange} />
+                    <SliderField label="Stress" name="mentalStress" value={formData.mentalStress} onChange={handleChange} />
+                </Card>
+
+                <Card title="Herstel & Gezondheid" icon={Stethoscope}>
+                    <FormInput name="illnessSigns" placeholder="Ziekteverschijnselen?" value={formData.illnessSigns} onChange={handleChange} />
+                    <FormInput name="musclePain" placeholder="Waar heb je spierpijn?" value={formData.musclePain} onChange={handleChange} />
+                </Card>
+
+                <Card title="Hydratatie & Cyclus" icon={Droplets}>
+                    <SliderField label="Waterinname" name="waterLiters" value={formData.waterLiters} min="0" max="6" step="0.5" unit=" L" onChange={handleChange} />
+                    <div className="grid grid-cols-2 gap-4">
+                        <FormInput label="Eiwitten (g)" type="number" name="proteinGrams" placeholder="Bijv. 160" value={formData.proteinGrams} onChange={handleChange} />
+                        <div className="flex flex-col">
+                            <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 ml-1">Cyclus</label>
+                            <select name="cyclePhase" value={formData.cyclePhase} onChange={handleChange} className="bg-gray-50 rounded-2xl p-4 text-sm font-bold outline-none border-none shadow-sm h-[52px]">
+                                <option>N.v.t.</option><option>Week 1</option><option>Week 2</option><option>Week 3</option><option>Week 4 (PMS)</option><option>Menstruatie</option>
+                            </select>
+                        </div>
+                    </div>
+                </Card>
+
+                <Card title="Voeding & Spijsvertering" icon={Apple}>
+                    <SliderField label="Honger" name="hunger" value={formData.hunger} onChange={handleChange} />
+                    <FormInput name="cravings" placeholder="Cravings vandaag?" value={formData.cravings} onChange={handleChange} />
+                    <div className="grid grid-cols-2 gap-4 mb-2">
+                        <FormInput label="Stoelgang (#)" type="number" name="bowelFrequency" value={formData.bowelFrequency} onChange={handleChange} />
+                        <div className="flex flex-col">
+                            <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 ml-1">Kwaliteit</label>
+                            <select name="bowelQuality" value={formData.bowelQuality} onChange={handleChange} className="bg-gray-50 rounded-2xl p-4 text-sm font-bold outline-none border-none shadow-sm h-[52px]">
+                                <option>Normaal</option><option>Hard</option><option>Dun</option>
+                            </select>
+                        </div>
+                    </div>
+                    <FormInput name="bloating" placeholder="Opgeblazen gevoel?" value={formData.bloating} onChange={handleChange} />
+                </Card>
+
+                <Card title="Training" icon={Dumbbell}>
+                    <label className="flex items-center gap-3 p-4 bg-gray-50 rounded-2xl cursor-pointer mb-6 shadow-sm">
+                        <input type="checkbox" name="trainingDay" checked={formData.trainingDay} onChange={handleChange} className="w-5 h-5 rounded text-red-600" />
+                        <span className="font-black italic uppercase text-xs">Vandaag getraind</span>
+                    </label>
+                    <div className="grid grid-cols-2 gap-4 mb-4">
+                        <FormInput label="Duur (min)" type="number" name="trainingDuration" placeholder="0" value={formData.trainingDuration} onChange={handleChange} />
+                        <div className="flex flex-col">
+                            <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 ml-1">Zwaarte (RPE)</label>
+                            <select name="trainingRpe" value={formData.trainingRpe} onChange={handleChange} className="bg-gray-50 rounded-2xl p-4 text-sm font-bold outline-none border-none shadow-sm h-[52px]">
+                                <option value="5">5 - Gemiddeld</option><option value="6">6 - Pittig</option><option value="7">7 - Zwaar</option><option value="8">8 - Zeer Zwaar</option><option value="9">9 - Maximaal</option><option value="10">10 - Tot Falen</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4 mb-4">
+                        <FormInput label="Stappen" type="number" name="steps" placeholder="0" value={formData.steps} onChange={handleChange} />
+                        <FormInput label="Calorieën" type="number" name="calories" placeholder="0" value={formData.calories} onChange={handleChange} />
+                    </div>
+                    <textarea name="trainingDetails" placeholder="Details?" value={formData.trainingDetails} onChange={handleChange} className="w-full bg-gray-50 border-none rounded-2xl p-5 text-sm font-bold outline-none shadow-sm min-h-[80px]" />
+                </Card>
+
+                <Card title="Leefstijl & Mindset" icon={Brain}>
+                    <FormInput icon={Smartphone} label="Schermtijd (u)" type="number" name="screenTime" placeholder="Bijv. 4" value={formData.screenTime} onChange={handleChange} />
+                    <SliderField label="Cijfer voor je dag" name="dailyRating" value={formData.dailyRating} onChange={handleChange} />
+                    <FormInput name="gratefulFor" placeholder="Dankbaar voor?" value={formData.gratefulFor} onChange={handleChange} />
+                    <FormInput name="biggestChallenge" placeholder="Grootste uitdaging?" value={formData.biggestChallenge} onChange={handleChange} />
+                </Card>
+
+                <Card title="Reflectie & Foto" icon={Target}>
+                    <FormInput icon={Trophy} name="biggestWin" placeholder="Grootste winst?" value={formData.biggestWin} onChange={handleChange} />
+                    <label className="flex items-center gap-3 p-4 bg-gray-50 rounded-2xl cursor-pointer mb-6 shadow-sm">
+                        <input type="checkbox" name="supplements" checked={formData.supplements} onChange={handleChange} className="w-5 h-5 rounded text-red-600" />
+                        <span className="font-black italic uppercase text-xs">Supplementen genomen</span>
+                    </label>
+                    <div className="bg-red-50 p-6 rounded-2xl border border-red-100 flex flex-col items-center justify-center relative overflow-hidden min-h-[100px]">
+                        {formData.photoBase64 ? (
+                            <div className="flex flex-col items-center gap-2">
+                                <Check size={32} className="text-green-500" />
+                                <span className="text-[10px] font-black uppercase italic text-green-700">Foto toegevoegd</span>
+                                <button onClick={() => setFormData(prev => ({...prev, photoBase64: ''}))} className="text-[9px] text-red-500 underline">Verwijder</button>
+                            </div>
+                        ) : (
+                            <>
+                                <Camera size={24} className="text-red-600 mb-2" />
+                                <span className="text-[10px] font-black uppercase italic text-red-600">Upload progressiefoto</span>
+                                <input type="file" accept="image/*" onChange={handleImageUpload} className="absolute inset-0 opacity-0 cursor-pointer w-full h-full" />
+                            </>
+                        )}
+                    </div>
+                </Card>
+
+                <div className="mt-8 pb-10">
+                  <button onClick={handleSubmit} disabled={isSubmitting} style={{ backgroundColor: BRAND_RED }} className="w-full py-5 text-white rounded-3xl font-black italic uppercase shadow-xl flex items-center justify-center gap-3 active:scale-[0.98] transition-transform">
+                    <Activity size={18} /> {isSubmitting ? "Bezig..." : "Update Dashboard"}
+                  </button>
+                </div>
+            </div>
+          )
+        ) : (
+          <div className="py-24 text-center">
+            <div className="w-24 h-24 bg-green-50 text-green-500 rounded-full flex items-center justify-center mx-auto mb-8 animate-bounce"><CheckCircle2 size={48} /></div>
+            <h2 className="text-4xl font-black italic uppercase mb-10">Ontvangen!</h2>
+            <button onClick={() => { setStep('form'); setClientTab('dashboard'); }} style={{ backgroundColor: BRAND_RED }} className="px-12 py-5 text-white rounded-full font-black italic uppercase mx-auto flex items-center gap-3">
+              <ChevronRight size={18}/> Naar Dashboard
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+const root = createRoot(document.getElementById('root'));
+root.render(<App />);
+    </script>
+</body>
+</html>
