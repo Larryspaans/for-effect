@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>For-Effect Ultimate - Challenge Edition</title>
+    <title>For-Effect Ultimate - Progress Edition</title>
     
     <link rel="apple-touch-icon" href="icon.png">
     <link rel="icon" type="image/png" href="icon.png">
@@ -18,7 +18,8 @@
     {
       "imports": {
         "react": "https://esm.sh/react@18.2.0",
-        "react-dom": "https://esm.sh/react-dom@18.2.0/client",
+        "react-dom": "https://esm.sh/react-dom@18.2.0",
+        "react-dom/client": "https://esm.sh/react-dom@18.2.0/client",
         "lucide-react": "https://esm.sh/lucide-react@0.344.0",
         "firebase/app": "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js",
         "firebase/firestore": "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js",
@@ -28,11 +29,10 @@
     </script>
     <style>
         .no-select { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
+        input[type="checkbox"]:checked + span { text-decoration: line-through; opacity: 0.5; }
+        /* Hide scrollbar for the menu */
         .hide-scrollbar::-webkit-scrollbar { display: none; }
         .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
-        .gold-gradient { background: linear-gradient(135deg, #FFD700 0%, #FDB931 100%); }
-        .silver-gradient { background: linear-gradient(135deg, #C0C0C0 0%, #A9A9A9 100%); }
-        .bronze-gradient { background: linear-gradient(135deg, #CD7F32 0%, #B87333 100%); }
     </style>
 </head>
 <body class="bg-[#FDFDFD] no-select" oncontextmenu="return false;">
@@ -45,7 +45,7 @@ import {
   Calendar, Smile, CheckCircle2, Users, MessageCircle, TrendingDown, 
   Lock, X, Trophy, Target, Activity, Dumbbell, Apple, 
   Stethoscope, ChevronRight, Droplets, Camera, Check, Brain, Smartphone, AlertCircle, Trash2, Eye, EyeOff, Search, UserPlus, Flame, BarChart3, Zap, Star, FileText, Save, ListTodo,
-  ShoppingCart, Clock, Tag, Gift, Timer, Crown, Medal, Send
+  ShoppingCart, Clock, Tag, Gift, Timer
 } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
 import { getFirestore, collection, addDoc, onSnapshot, query, serverTimestamp, doc, deleteDoc, setDoc, getDocs, updateDoc } from 'firebase/firestore';
@@ -156,29 +156,10 @@ const App = () => {
   const [step, setStep] = useState('form');
   const [submissions, setSubmissions] = useState([]);
   const [clients, setClients] = useState([]);
-  const [challengeSettings, setChallengeSettings] = useState({
-      status: 'Gesloten',
-      week: 1,
-      protocolUrl: '',
-      goldName: 'Nog niet bekend',
-      silverName: 'Nog niet bekend',
-      bronzeName: 'Nog niet bekend',
-      wallOfEffect: [] // NIEUW: Structuur voor Wall of Effect gouden kaarten
-  });
-  
-  // NIEUW: Chat State
-  const [chatMessages, setChatMessages] = useState([]);
-  const [newMessage, setNewMessage] = useState('');
-  
-  // NIEUW: Wall of Effect Manager State
-  const [newWoeName, setNewWoeName] = useState('');
-  const [newWoeInfo, setNewWoeInfo] = useState('');
-  const [newWoePhoto, setNewWoePhoto] = useState('');
-
   const [searchTerm, setSearchTerm] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showPinModal, setShowPinModal] = useState(false);
-  const [showAdminTab, setShowAdminTab] = useState('checkins'); // 'checkins', 'clients', 'challenge'
+  const [showClientAdmin, setShowClientAdmin] = useState(false);
   const [pinInput, setPinInput] = useState('');
   const [pinError, setPinError] = useState(false);
   const [checkedIds, setCheckedIds] = useState(new Set());
@@ -214,17 +195,7 @@ const App = () => {
       const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setClients(data);
     });
-    const unsubChal = onSnapshot(doc(db, 'settings', 'challenge'), (doc) => {
-        if (doc.exists()) setChallengeSettings(doc.data());
-    });
-    // NIEUW: Chat Listener
-    const unsubChat = onSnapshot(collection(db, 'challengeChat'), (snapshot) => {
-        const msgs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))
-            .sort((a, b) => (a.createdAt?.seconds || 0) - (b.createdAt?.seconds || 0));
-        setChatMessages(msgs);
-    });
-
-    return () => { unsubSub(); unsubCli(); unsubChal(); unsubChat(); };
+    return () => { unsubSub(); unsubCli(); };
   }, []);
 
   const handleClientLogin = (e) => {
@@ -251,12 +222,14 @@ const App = () => {
       await addDoc(collection(db, 'clients'), {
         name: newClientName.trim(),
         code: newClientCode.trim(),
-        schemaUrl: '', schemaUrl2: '',
+        schemaUrl: '',
+        schemaUrl2: '',    // NIEUW: 2e Schema link
         weeklyChallenge: '',
         task1: '', task2: '', task3: '',
         task1Done: false, task2Done: false, task3Done: false,
-        endDate: '', webshopUrl: '', extraToolsUrl: '',
-        isChallengeParticipant: false,
+        endDate: '',
+        webshopUrl: '',
+        extraToolsUrl: '', // NIEUW: Extra tools link
         createdAt: serverTimestamp()
       });
       setNewClientName('');
@@ -268,12 +241,6 @@ const App = () => {
     try {
         await updateDoc(doc(db, 'clients', id), { [field]: value });
     } catch (err) { console.error("Fout bij opslaan", err); }
-  };
-
-  const updateChallengeGlobal = async (field, value) => {
-      try {
-          await setDoc(doc(db, 'settings', 'challenge'), { ...challengeSettings, [field]: value }, { merge: true });
-      } catch (err) { console.error(err); }
   };
 
   const deleteClient = async (id) => {
@@ -302,58 +269,6 @@ const App = () => {
       img.src = event.target.result;
     };
     reader.readAsDataURL(file);
-  };
-
-  // NIEUW: Center-Crop (1:1) Vierkant Image Upload voor de Wall of Effect
-  const handleWoeImageUpload = (e) => {
-      const file = e.target.files[0];
-      if (!file) return;
-      const reader = new FileReader();
-      reader.onload = (event) => {
-          const img = new Image();
-          img.onload = () => {
-              const canvas = document.createElement('canvas');
-              const size = Math.min(img.width, img.height);
-              canvas.width = 400; // Constante resolutie
-              canvas.height = 400;
-              const ctx = canvas.getContext('2d');
-              const startX = (img.width - size) / 2;
-              const startY = (img.height - size) / 2;
-              // Crop vanuit het midden
-              ctx.drawImage(img, startX, startY, size, size, 0, 0, 400, 400);
-              setNewWoePhoto(canvas.toDataURL('image/jpeg', 0.7));
-          };
-          img.src = event.target.result;
-      };
-      reader.readAsDataURL(file);
-  };
-
-  // NIEUW: Wall of Effect Toevoegen/Verwijderen
-  const addWoeEntry = async () => {
-      if(!newWoeName || !newWoePhoto) { alert("Naam en foto zijn verplicht!"); return; }
-      const currentWoe = challengeSettings.wallOfEffect || [];
-      const updatedWoe = [{ name: newWoeName, info: newWoeInfo, photoBase64: newWoePhoto }, ...currentWoe];
-      await updateChallengeGlobal('wallOfEffect', updatedWoe);
-      setNewWoeName(''); setNewWoeInfo(''); setNewWoePhoto('');
-  };
-  const removeWoeEntry = async (index) => {
-      if(window.confirm("Kaart verwijderen?")) {
-          const updatedWoe = [...(challengeSettings.wallOfEffect || [])];
-          updatedWoe.splice(index, 1);
-          await updateChallengeGlobal('wallOfEffect', updatedWoe);
-      }
-  };
-
-  // NIEUW: Stuur Chatbericht
-  const sendChatMessage = async (e) => {
-      e.preventDefault();
-      if(!newMessage.trim()) return;
-      await addDoc(collection(db, 'challengeChat'), {
-          text: newMessage.trim(),
-          sender: formData.clientName,
-          createdAt: serverTimestamp()
-      });
-      setNewMessage('');
   };
 
   const handlePinSubmit = (e) => {
@@ -418,7 +333,6 @@ const App = () => {
 
     return {
         clientId: clientInfo?.id,
-        isChallengeParticipant: clientInfo?.isChallengeParticipant || false,
         count: data.length,
         lastWeight,
         weightDiff: weightDiff > 0 ? `-${weightDiff}kg` : `${Math.abs(weightDiff)}kg`,
@@ -502,15 +416,16 @@ const App = () => {
                     </span>
                 </div>
             </div>
-            <div className="flex gap-2 w-full md:w-auto overflow-x-auto pb-2 md:pb-0">
-                <button onClick={() => setShowAdminTab('checkins')} className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase italic whitespace-nowrap transition-all ${showAdminTab === 'checkins' ? 'bg-red-600 text-white' : 'bg-slate-100 text-slate-500'}`}>Check-ins</button>
-                <button onClick={() => setShowAdminTab('clients')} className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase italic whitespace-nowrap transition-all ${showAdminTab === 'clients' ? 'bg-red-600 text-white' : 'bg-slate-100 text-slate-500'}`}>Cliënten</button>
-                <button onClick={() => setShowAdminTab('challenge')} className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase italic whitespace-nowrap transition-all ${showAdminTab === 'challenge' ? 'bg-orange-500 text-white' : 'bg-slate-100 text-slate-500'}`}>Challenge Beheer</button>
-                <button onClick={() => setView('login')} className="px-4 py-2 bg-slate-800 text-white rounded-xl text-[10px] font-black uppercase italic whitespace-nowrap">Uitloggen</button>
+            <div className="flex gap-2 w-full md:w-auto">
+                <button onClick={() => setShowClientAdmin(!showClientAdmin)} className="px-4 py-2 bg-red-600 text-white rounded-xl text-[10px] font-black uppercase italic flex items-center gap-2">
+                    {showClientAdmin ? <ChevronRight size={14}/> : <UserPlus size={14}/>}
+                    {showClientAdmin ? "Check-ins" : "Beheer Cliënten"}
+                </button>
+                <button onClick={() => setView('login')} className="px-4 py-2 bg-slate-800 text-white rounded-xl text-[10px] font-black uppercase italic">Uitloggen</button>
             </div>
           </div>
           
-          {showAdminTab === 'clients' ? (
+          {showClientAdmin ? (
             <div className="max-w-xl mx-auto animate-in fade-in zoom-in duration-300">
                 <Card title="Nieuwe Klant Toevoegen" icon={UserPlus}>
                     <form onSubmit={handleAddClient} className="flex flex-col gap-4">
@@ -528,99 +443,92 @@ const App = () => {
                                     <p className="font-black italic text-sm text-slate-800 uppercase tracking-tight">{c.name}</p>
                                     <p className="text-[10px] font-bold text-red-500 uppercase tracking-widest">Code: {c.code}</p>
                                 </div>
-                                <div className="flex items-center gap-2">
-                                    <label className="flex items-center gap-2 bg-orange-50 px-2 py-1 rounded-lg cursor-pointer">
-                                        <input type="checkbox" checked={c.isChallengeParticipant} onChange={(e) => updateClientField(c.id, 'isChallengeParticipant', e.target.checked)} className="w-3 h-3 accent-orange-500" />
-                                        <span className="text-[8px] font-black uppercase text-orange-600">Challenge</span>
-                                    </label>
-                                    <button onClick={() => deleteClient(c.id)} className="p-2 text-slate-300 hover:text-red-500"><Trash2 size={18}/></button>
-                                </div>
+                                <button onClick={() => deleteClient(c.id)} className="p-2 text-slate-300 hover:text-red-500"><Trash2 size={18}/></button>
                             </div>
                             <div className="grid grid-cols-1 gap-2">
-                                <div className="grid grid-cols-2 gap-2">
-                                    <input type="text" defaultValue={c.schemaUrl} placeholder="PDF Schema 1" className="flex-1 bg-gray-50 border-none rounded-xl p-3 text-[10px] font-bold outline-none" onBlur={(e) => updateClientField(c.id, 'schemaUrl', e.target.value)} />
-                                    <input type="text" defaultValue={c.schemaUrl2} placeholder="PDF Schema 2" className="flex-1 bg-gray-50 border-none rounded-xl p-3 text-[10px] font-bold outline-none" onBlur={(e) => updateClientField(c.id, 'schemaUrl2', e.target.value)} />
+                                <div className="flex gap-2">
+                                    <input 
+                                        type="text" 
+                                        defaultValue={c.schemaUrl} 
+                                        placeholder="PDF Link (Schema 1)" 
+                                        className="flex-1 bg-gray-50 border-none rounded-xl p-3 text-[10px] font-bold outline-none"
+                                        onBlur={(e) => updateClientField(c.id, 'schemaUrl', e.target.value)}
+                                    />
+                                    <div className="bg-slate-100 p-3 rounded-xl text-slate-400"><FileText size={14}/></div>
                                 </div>
-                                <input type="text" defaultValue={c.weeklyChallenge} placeholder="Wekelijkse Challenge Focus" className="flex-1 bg-gray-50 border-none rounded-xl p-3 text-[10px] font-bold outline-none" onBlur={(e) => updateClientField(c.id, 'weeklyChallenge', e.target.value)} />
-                                <div className="grid grid-cols-3 gap-2">
+                                {/* 2e SCHEMA LINK */}
+                                <div className="flex gap-2">
+                                    <input 
+                                        type="text" 
+                                        defaultValue={c.schemaUrl2} 
+                                        placeholder="PDF Link (Schema 2)" 
+                                        className="flex-1 bg-gray-50 border-none rounded-xl p-3 text-[10px] font-bold outline-none"
+                                        onBlur={(e) => updateClientField(c.id, 'schemaUrl2', e.target.value)}
+                                    />
+                                    <div className="bg-slate-100 p-3 rounded-xl text-slate-400"><FileText size={14}/></div>
+                                </div>
+
+                                <div className="flex gap-2">
+                                    <input 
+                                        type="text" 
+                                        defaultValue={c.weeklyChallenge} 
+                                        placeholder="Wekelijkse Challenge (Focus tekst)" 
+                                        className="flex-1 bg-gray-50 border-none rounded-xl p-3 text-[10px] font-bold outline-none"
+                                        onBlur={(e) => updateClientField(c.id, 'weeklyChallenge', e.target.value)}
+                                    />
+                                    <div className="bg-slate-100 p-3 rounded-xl text-blue-500"><Zap size={14}/></div>
+                                </div>
+                                <div className="grid grid-cols-1 gap-2 mt-2 border-t pt-2 border-slate-50">
+                                    <p className="text-[9px] font-black uppercase italic text-slate-400">Opdrachten om af te vinken:</p>
                                     {[1, 2, 3].map(i => (
-                                        <input key={i} type="text" defaultValue={c[`task${i}`]} placeholder={`Taak ${i}`} className="flex-1 bg-gray-50 border-none rounded-xl p-3 text-[10px] font-bold outline-none" onBlur={(e) => updateClientField(c.id, `task${i}`, e.target.value)} />
+                                        <div key={i} className="flex gap-2">
+                                            <input 
+                                                type="text" 
+                                                defaultValue={c[`task${i}`]} 
+                                                placeholder={`Opdracht ${i}`} 
+                                                className="flex-1 bg-gray-50 border-none rounded-xl p-3 text-[10px] font-bold outline-none"
+                                                onBlur={(e) => updateClientField(c.id, `task${i}`, e.target.value)}
+                                            />
+                                            <div className="bg-slate-100 p-3 rounded-xl text-green-500"><ListTodo size={14}/></div>
+                                        </div>
                                     ))}
                                 </div>
-                                <div className="grid grid-cols-2 gap-2 mt-2 pt-2 border-t border-slate-50">
-                                    <input type="date" defaultValue={c.endDate} className="bg-gray-50 border-none rounded-xl p-3 text-[10px] font-bold outline-none" onBlur={(e) => updateClientField(c.id, 'endDate', e.target.value)} />
-                                    <input type="text" defaultValue={c.webshopUrl} placeholder="Link Verlengen" className="bg-gray-50 border-none rounded-xl p-3 text-[10px] font-bold outline-none" onBlur={(e) => updateClientField(c.id, 'webshopUrl', e.target.value)} />
+                                <div className="grid grid-cols-1 gap-2 mt-2 border-t pt-2 border-slate-50">
+                                    <p className="text-[9px] font-black uppercase italic text-slate-400">Verkoop & Retentie (Timer):</p>
+                                    <div className="flex gap-2">
+                                        <input 
+                                            type="date" 
+                                            defaultValue={c.endDate} 
+                                            className="flex-1 bg-gray-50 border-none rounded-xl p-3 text-[10px] font-bold outline-none text-slate-600"
+                                            onBlur={(e) => updateClientField(c.id, 'endDate', e.target.value)}
+                                        />
+                                        <div className="bg-slate-100 p-3 rounded-xl text-orange-500"><Clock size={14}/></div>
+                                    </div>
+                                    <div className="flex gap-2">
+                                        <input 
+                                            type="text" 
+                                            defaultValue={c.webshopUrl} 
+                                            placeholder="Link voor 'Verleng jouw progressie'" 
+                                            className="flex-1 bg-gray-50 border-none rounded-xl p-3 text-[10px] font-bold outline-none"
+                                            onBlur={(e) => updateClientField(c.id, 'webshopUrl', e.target.value)}
+                                        />
+                                        <div className="bg-slate-100 p-3 rounded-xl text-green-500"><ShoppingCart size={14}/></div>
+                                    </div>
+                                    <div className="flex gap-2">
+                                        <input 
+                                            type="text" 
+                                            defaultValue={c.extraToolsUrl} 
+                                            placeholder="Link voor 'Bekijk onze extra tools'" 
+                                            className="flex-1 bg-gray-50 border-none rounded-xl p-3 text-[10px] font-bold outline-none"
+                                            onBlur={(e) => updateClientField(c.id, 'extraToolsUrl', e.target.value)}
+                                        />
+                                        <div className="bg-slate-100 p-3 rounded-xl text-purple-500"><Tag size={14}/></div>
+                                    </div>
                                 </div>
                             </div>
                         </div>
                     ))}
                 </div>
-            </div>
-          ) : showAdminTab === 'challenge' ? (
-            <div className="max-w-xl mx-auto animate-in fade-in zoom-in duration-300">
-                <Card title="Challenge Status & Protocol" icon={Trophy}>
-                    <div className="space-y-4">
-                        <div>
-                            <label className="text-[10px] font-black uppercase text-slate-400 block mb-1">Status Challenge</label>
-                            <select value={challengeSettings.status} onChange={(e) => updateChallengeGlobal('status', e.target.value)} className="w-full bg-gray-50 rounded-xl p-4 text-sm font-bold outline-none border-none">
-                                <option>Gesloten</option>
-                                <option>Inschrijving Open</option>
-                                <option>Challenge Bezig</option>
-                            </select>
-                        </div>
-                        {challengeSettings.status === 'Challenge Bezig' && (
-                            <FormInput label="Huidige Week (1-8)" type="number" value={challengeSettings.week} onChange={(e) => updateChallengeGlobal('week', e.target.value)} />
-                        )}
-                        <FormInput label="Protocol PDF Link" placeholder="https://..." value={challengeSettings.protocolUrl} onChange={(e) => updateChallengeGlobal('protocolUrl', e.target.value)} />
-                    </div>
-                </Card>
-                
-                <Card title="Het Podium (Huidige Editie)" icon={Medal}>
-                    <div className="space-y-3">
-                        <FormInput label="Goud (1e plek)" icon={Crown} value={challengeSettings.goldName} onChange={(e) => updateChallengeGlobal('goldName', e.target.value)} />
-                        <FormInput label="Zilver (2e plek)" value={challengeSettings.silverName} onChange={(e) => updateChallengeGlobal('silverName', e.target.value)} />
-                        <FormInput label="Brons (3e plek)" value={challengeSettings.bronzeName} onChange={(e) => updateChallengeGlobal('bronzeName', e.target.value)} />
-                    </div>
-                </Card>
-
-                {/* NIEUWE WALL OF EFFECT MANAGER */}
-                <Card title="Wall of Effect" icon={Star}>
-                    <div className="space-y-4 mb-6 p-4 bg-slate-50 rounded-2xl border border-slate-100">
-                        <p className="text-[10px] font-black uppercase text-slate-400 mb-2">Nieuwe Kampioen Toevoegen</p>
-                        <FormInput placeholder="Naam (bijv. Jan Smit)" value={newWoeName} onChange={(e) => setNewWoeName(e.target.value)} />
-                        <FormInput placeholder="Korte info (bijv. -10kg in 8 weken)" value={newWoeInfo} onChange={(e) => setNewWoeInfo(e.target.value)} />
-                        
-                        <div className="bg-white p-4 rounded-xl border border-slate-200 text-center relative overflow-hidden">
-                            {newWoePhoto ? (
-                                <div className="flex flex-col items-center">
-                                    <img src={newWoePhoto} alt="Preview" className="w-24 h-24 object-cover rounded-xl mb-2 border-2 border-yellow-400" />
-                                    <button onClick={() => setNewWoePhoto('')} className="text-[9px] text-red-500 underline uppercase font-bold">Wis foto</button>
-                                </div>
-                            ) : (
-                                <>
-                                    <Camera size={24} className="text-yellow-500 mx-auto mb-2" />
-                                    <span className="text-[10px] font-black uppercase italic text-yellow-600">Upload 1:1 Foto (Vierkant)</span>
-                                    <input type="file" accept="image/*" onChange={handleWoeImageUpload} className="absolute inset-0 opacity-0 cursor-pointer w-full h-full" />
-                                </>
-                            )}
-                        </div>
-                        <button onClick={addWoeEntry} className="w-full bg-yellow-500 text-white py-3 rounded-xl font-black uppercase italic text-xs shadow-md active:scale-95 transition-all">Toevoegen aan Wall</button>
-                    </div>
-
-                    <div className="space-y-3">
-                        <p className="text-[10px] font-black uppercase text-slate-400 mb-2">Huidige Wall of Effect ({challengeSettings.wallOfEffect?.length || 0})</p>
-                        {(challengeSettings.wallOfEffect || []).map((w, i) => (
-                            <div key={i} className="flex items-center gap-4 bg-white p-3 rounded-2xl border border-slate-100 shadow-sm">
-                                <img src={w.photoBase64} className="w-12 h-12 object-cover rounded-lg border border-yellow-200" />
-                                <div className="flex-1">
-                                    <p className="text-xs font-black italic uppercase text-slate-800">{w.name}</p>
-                                    <p className="text-[9px] text-slate-500 truncate">{w.info}</p>
-                                </div>
-                                <button onClick={() => removeWoeEntry(i)} className="p-2 text-slate-300 hover:text-red-500"><Trash2 size={16}/></button>
-                            </div>
-                        ))}
-                    </div>
-                </Card>
             </div>
           ) : (
             <>
@@ -688,9 +596,6 @@ const App = () => {
                 <button onClick={() => setClientTab('schemas')} className={`flex-1 min-w-[70px] py-3 rounded-[1.4rem] text-[9px] font-black uppercase italic transition-all flex flex-col items-center justify-center gap-1.5 ${clientTab === 'schemas' ? 'bg-white shadow-sm text-red-600' : 'text-slate-400'}`}>
                     <FileText size={16}/> Schema's
                 </button>
-                <button onClick={() => setClientTab('challenge')} className={`flex-1 min-w-[70px] py-3 rounded-[1.4rem] text-[9px] font-black uppercase italic transition-all flex flex-col items-center justify-center gap-1.5 ${clientTab === 'challenge' ? 'bg-white shadow-sm text-orange-500' : 'text-slate-400'}`}>
-                    {clientData.isChallengeParticipant ? <Trophy size={16}/> : <Lock size={16}/>} Challenge
-                </button>
                 <button onClick={() => setClientTab('webshop')} className={`flex-1 min-w-[70px] py-3 rounded-[1.4rem] text-[9px] font-black uppercase italic transition-all flex flex-col items-center justify-center gap-1.5 ${clientTab === 'webshop' ? 'bg-white shadow-sm text-red-600' : 'text-slate-400'}`}>
                     <ShoppingCart size={16}/> Shop
                 </button>
@@ -706,17 +611,39 @@ const App = () => {
                         {clientData.streak > 2 ? 'Je bent on fire! 🔥 Houd dit vast!' : 'Lekker bezig, klaar voor je volgende check-in?'}
                     </p>
                 </div>
+
                 {clientData.daysLeft !== null && clientData.daysLeft <= 14 && clientData.daysLeft >= 0 && (
                     <div className={`rounded-[2rem] p-5 mb-6 flex items-center gap-4 shadow-sm relative overflow-hidden ${clientData.daysLeft <= 7 ? 'bg-red-50 border border-red-200' : 'bg-orange-50 border border-orange-200'}`}>
-                        <div className="bg-white p-3 rounded-full shadow-sm"><Clock size={20} className={clientData.daysLeft <= 7 ? 'text-red-600' : 'text-orange-500'} /></div>
+                        <Timer className={`absolute right-[-10px] bottom-[-10px] opacity-10 ${clientData.daysLeft <= 7 ? 'text-red-500 fill-red-500' : 'text-orange-500 fill-orange-500'}`} size={64} />
+                        <div className="bg-white p-3 rounded-full shadow-sm">
+                            <Clock size={20} className={clientData.daysLeft <= 7 ? 'text-red-600 animate-pulse' : 'text-orange-500'} />
+                        </div>
                         <div className="relative z-10 w-full pr-4">
                             <p className={`text-[9px] font-black uppercase italic mb-0.5 ${clientData.daysLeft <= 7 ? 'text-red-600' : 'text-orange-600'}`}>Traject eindigt bijna</p>
-                            <p className="text-sm font-bold text-slate-800 italic">Nog maar <span className="text-xl mx-1">{clientData.daysLeft}</span> dagen.</p>
+                            <p className="text-sm font-bold text-slate-800 italic">
+                                Nog maar <span className="text-xl mx-1">{clientData.daysLeft}</span> {clientData.daysLeft === 1 ? 'dag' : 'dagen'}.
+                                {clientData.daysLeft <= 7 && " Verleng nu!"}
+                            </p>
+                            {clientData.daysLeft <= 7 && (
+                                <button onClick={() => setClientTab('webshop')} className="mt-2 text-[10px] font-black uppercase bg-red-600 text-white px-3 py-1.5 rounded-lg shadow-sm">
+                                    Ga naar Shop
+                                </button>
+                            )}
                         </div>
                     </div>
                 )}
+                {clientData.daysLeft !== null && clientData.daysLeft < 0 && (
+                     <div className="bg-red-600 rounded-[2rem] p-5 mb-6 flex items-center gap-4 shadow-sm relative overflow-hidden text-white cursor-pointer" onClick={() => setClientTab('webshop')}>
+                        <div className="relative z-10 w-full text-center">
+                            <p className="text-sm font-black uppercase italic mb-1">Je traject is afgelopen</p>
+                            <p className="text-[10px] font-bold italic opacity-90">Verleng je pakket in de shop om door te gaan.</p>
+                        </div>
+                    </div>
+                )}
+
                 {clientData.weeklyChallenge && (
                     <div className="bg-blue-50 border border-blue-200 rounded-[2rem] p-5 mb-6 flex items-center gap-4 shadow-sm relative overflow-hidden">
+                        <Zap className="text-blue-400 fill-blue-400 absolute right-[-10px] bottom-[-10px] opacity-20" size={64} />
                         <div className="bg-white p-3 rounded-full shadow-sm"><Zap size={20} className="text-blue-500" /></div>
                         <div className="relative z-10">
                             <p className="text-[9px] font-black uppercase italic text-blue-600 mb-0.5">Focus van de Week</p>
@@ -724,219 +651,268 @@ const App = () => {
                         </div>
                     </div>
                 )}
+
                 <Card title="Wekelijkse Challenges" icon={Zap}>
-                    <ChallengeBar label="Water (2.5L)" percentage={clientData.percWater} /><ChallengeBar label="Training (3x)" percentage={clientData.percTraining} /><ChallengeBar label="Slaap (7U+)" percentage={clientData.percSleep} /><ChallengeBar label="Voeding (Eiwit)" percentage={clientData.percProtein} /><ChallengeBar label="Movement (10K)" percentage={clientData.percMovement} />
+                    <ChallengeBar label="Water (2.5L)" percentage={clientData.percWater} />
+                    <ChallengeBar label="Training (3x)" percentage={clientData.percTraining} />
+                    <ChallengeBar label="Slaap (7U+)" percentage={clientData.percSleep} />
+                    <ChallengeBar label="Voeding (Eiwit)" percentage={clientData.percProtein} />
+                    <ChallengeBar label="Movement (10K)" percentage={clientData.percMovement} />
                 </Card>
+
                 {(clientData.task1 || clientData.task2 || clientData.task3) && (
                     <Card title="Mijn Opdrachten" icon={ListTodo}>
                         <div className="space-y-3">
                             {[1, 2, 3].map(i => clientData[`task${i}`] && (
                                 <div key={i} className="flex items-center gap-3 p-4 bg-slate-50 rounded-2xl transition-all">
-                                    <input type="checkbox" checked={clientData[`task${i}Done`]} onChange={() => toggleClientTask(i)} className="w-6 h-6 rounded-lg text-red-600 border-none bg-white shadow-sm" />
-                                    <span className={`text-xs font-black uppercase italic ${clientData[`task${i}Done`] ? 'text-slate-300 line-through' : 'text-slate-700'}`}>{clientData[`task${i}`]}</span>
+                                    <input 
+                                        type="checkbox" 
+                                        checked={clientData[`task${i}Done`]} 
+                                        onChange={() => toggleClientTask(i)}
+                                        className="w-6 h-6 rounded-lg text-red-600 focus:ring-red-500 border-none bg-white shadow-sm"
+                                    />
+                                    <span className={`text-xs font-black uppercase italic ${clientData[`task${i}Done`] ? 'text-slate-300 line-through' : 'text-slate-700'}`}>
+                                        {clientData[`task${i}`]}
+                                    </span>
                                 </div>
                             ))}
                         </div>
                     </Card>
                 )}
+
                 <div className="grid grid-cols-2 gap-4 mb-6">
-                    <div className="bg-slate-900 rounded-[2rem] p-6 text-white shadow-xl relative overflow-hidden"><TrendingDown className="absolute right-[-10px] bottom-[-10px] text-white/10" size={80} /><p className="text-[10px] font-black uppercase italic text-white/60 mb-1">Gewichtsverlies</p><p className="text-3xl font-black italic tracking-tighter">{clientData.weightDiff}</p></div>
-                    <div className="bg-white rounded-[2rem] p-6 border border-slate-100 shadow-sm relative overflow-hidden"><Flame className="absolute right-[-10px] bottom-[-10px] text-red-500/10" size={80} /><p className="text-[10px] font-black uppercase italic text-slate-400 mb-1">Check-in Streak</p><p className="text-3xl font-black italic tracking-tighter text-slate-800">{clientData.streak} Dagen 🔥</p></div>
+                    <div className="bg-slate-900 rounded-[2rem] p-6 text-white shadow-xl relative overflow-hidden">
+                        <TrendingDown className="absolute right-[-10px] bottom-[-10px] text-white/10" size={80} />
+                        <p className="text-[10px] font-black uppercase italic text-white/60 mb-1">Gewichtsverlies</p>
+                        <p className="text-3xl font-black italic tracking-tighter">{clientData.weightDiff}</p>
+                    </div>
+                    <div className="bg-white rounded-[2rem] p-6 border border-slate-100 shadow-sm relative overflow-hidden">
+                        <Flame className={`absolute right-[-10px] bottom-[-10px] ${clientData.streak > 2 ? 'text-red-500/20' : 'text-slate-500/5'}`} size={80} />
+                        <p className="text-[10px] font-black uppercase italic text-slate-400 mb-1">Check-in Streak</p>
+                        <p className="text-3xl font-black italic tracking-tighter text-slate-800">{clientData.streak} Dagen 🔥</p>
+                    </div>
                 </div>
+
+                <div className="grid grid-cols-3 gap-3 mb-6">
+                    <div className="bg-white p-4 rounded-2xl border border-slate-50 text-center shadow-sm">
+                        <p className="text-[8px] font-black text-slate-400 uppercase italic mb-1">Energie</p>
+                        <p className="text-sm font-black text-red-600 italic">{clientData.avgEnergy}/10</p>
+                    </div>
+                    <div className="bg-white p-4 rounded-2xl border border-slate-50 text-center shadow-sm">
+                        <p className="text-[8px] font-black text-slate-400 uppercase italic mb-1">Slaap</p>
+                        <p className="text-sm font-black text-slate-800 italic">{clientData.avgSleep}u</p>
+                    </div>
+                    <div className="bg-white p-4 rounded-2xl border border-slate-50 text-center shadow-sm">
+                        <p className="text-[8px] font-black text-slate-400 uppercase italic mb-1">Stappen</p>
+                        <p className="text-sm font-black text-slate-800 italic">{clientData.avgSteps}</p>
+                    </div>
+                </div>
+
                 <Card title="Gewichtsverloop" icon={TrendingDown}><WeightChart data={clientData.chartData} /></Card>
-                <button onClick={() => setClientTab('form')} className="w-full py-5 bg-slate-900 text-white rounded-[2rem] font-black italic uppercase shadow-xl flex items-center justify-center gap-3 active:scale-[0.98] transition-all">Vul nieuwe check-in in <ChevronRight size={18}/></button>
+                
+                <Card title="Recente Historie" icon={Calendar}>
+                    <div className="space-y-3">
+                        {clientData.history.map((h, i) => (
+                            <div key={i} className="flex justify-between items-center border-b border-gray-50 pb-2 last:border-0">
+                                <span className="text-[10px] font-bold text-slate-500 uppercase">{h.date}</span>
+                                <span className="text-[10px] font-black italic text-slate-800">{h.weight}kg | En: {h.energy}</span>
+                            </div>
+                        ))}
+                    </div>
+                </Card>
+
+                <button onClick={() => setClientTab('form')} className="w-full py-5 bg-slate-900 text-white rounded-[2rem] font-black italic uppercase shadow-xl flex items-center justify-center gap-3 active:scale-[0.98] transition-all">
+                    Vul nieuwe check-in in <ChevronRight size={18}/>
+                </button>
             </div>
           ) : clientTab === 'schemas' ? (
             <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 min-h-[60vh]">
                 <div className="mb-8 text-center">
                     <h2 className="text-2xl font-black italic uppercase tracking-tight text-slate-800">Jouw Schema's 📋</h2>
                 </div>
+                
                 <div className="flex flex-col gap-6 pb-10">
                     {clientData.schemaUrl ? (
-                        <div className="w-full h-[65vh] rounded-[2rem] overflow-hidden border-4 border-white shadow-2xl bg-slate-100">
-                            <iframe src={`${clientData.schemaUrl}#toolbar=0`} className="w-full h-full"></iframe>
+                        <div className="w-full h-[65vh] rounded-[2rem] overflow-hidden border-4 border-white shadow-2xl relative bg-slate-100">
+                            <iframe 
+                                src={`${clientData.schemaUrl}#toolbar=0&navpanes=0&scrollbar=0`} 
+                                className="w-full h-full"
+                                frameBorder="0"
+                            ></iframe>
                         </div>
-                    ) : <p className="text-center text-slate-400 py-10">Geen schema geüpload.</p>}
+                    ) : (
+                        <div className="text-center py-20 bg-white rounded-[2rem] border border-dashed border-slate-200">
+                            <FileText size={48} className="mx-auto text-slate-200 mb-4" />
+                            <p className="text-[10px] font-black uppercase text-slate-400 italic">Nog geen schema geüpload</p>
+                        </div>
+                    )}
+                    
+                    {/* OPTIONEEL TWEEDE SCHEMA */}
                     {clientData.schemaUrl2 && (
-                        <div className="w-full h-[65vh] rounded-[2rem] overflow-hidden border-4 border-white shadow-2xl bg-slate-100">
-                            <iframe src={`${clientData.schemaUrl2}#toolbar=0`} className="w-full h-full"></iframe>
+                        <div className="w-full h-[65vh] rounded-[2rem] overflow-hidden border-4 border-white shadow-2xl relative bg-slate-100">
+                            <iframe 
+                                src={`${clientData.schemaUrl2}#toolbar=0&navpanes=0&scrollbar=0`} 
+                                className="w-full h-full"
+                                frameBorder="0"
+                            ></iframe>
                         </div>
                     )}
                 </div>
-            </div>
-          ) : clientTab === 'challenge' ? (
-            <div className="animate-in fade-in zoom-in duration-500 pb-10">
-                {!clientData.isChallengeParticipant ? (
-                    <div className="text-center mt-12 px-4">
-                        <div className="w-24 h-24 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-6">
-                            <Lock size={40} className="text-slate-300" />
-                        </div>
-                        <h2 className="text-3xl font-black italic uppercase tracking-tight text-slate-800 mb-4">Gedeelte Vergrendeld</h2>
-                        <p className="text-sm font-bold text-slate-500 mb-8 italic">Je neemt momenteel niet deel aan de 8-Weekse Transformatie Challenge. Wil je ook strijden voor de gouden trofee en samen met de community maximaal resultaat behalen?</p>
-                        <button onClick={() => window.open(`https://wa.me/?text=${encodeURIComponent(`Hey coach! Ik zie dat de challenge tab op een slotje staat. Hoe kan ik meedoen aan de volgende editie?`)}`)} className="w-full py-5 bg-slate-900 text-white rounded-[2rem] font-black italic uppercase shadow-xl flex items-center justify-center gap-3 active:scale-95 transition-all">
-                            <Flame size={18} className="text-orange-500" /> Ik wil ook meedoen!
-                        </button>
-                    </div>
-                ) : (
-                    <>
-                        <div className="mb-8 text-center">
-                            <h2 className="text-3xl font-black italic uppercase tracking-tight text-slate-800">8-Weken Challenge 🏆</h2>
-                            <div className="mt-4 inline-flex items-center gap-2 bg-orange-100 px-4 py-1.5 rounded-full border border-orange-200">
-                                <Clock size={14} className="text-orange-600 animate-pulse" />
-                                <span className="text-[10px] font-black uppercase italic text-orange-600">
-                                    {challengeSettings.status === 'Challenge Bezig' ? `Week ${challengeSettings.week} / 8 - Hou vol!` : challengeSettings.status}
-                                </span>
-                            </div>
-                        </div>
-
-                        {/* HET PODIUM */}
-                        <Card title="Tussenstand Podium" icon={Crown}>
-                            <div className="flex items-end justify-center gap-2 pt-10 pb-4 h-64">
-                                {/* ZILVER */}
-                                <div className="flex flex-col items-center flex-1">
-                                    <div className="bg-slate-50 p-2 rounded-t-xl text-center mb-1 w-full">
-                                        <p className="text-[9px] font-black uppercase text-slate-600 truncate px-1">{challengeSettings.silverName}</p>
-                                    </div>
-                                    <div className="silver-gradient w-full h-24 rounded-t-lg flex items-center justify-center shadow-lg">
-                                        <span className="text-3xl font-black italic text-white/50">2</span>
-                                    </div>
-                                </div>
-                                {/* GOUD */}
-                                <div className="flex flex-col items-center flex-1">
-                                    <Crown size={24} className="text-yellow-500 mb-2 animate-bounce" />
-                                    <div className="bg-yellow-50 p-2 rounded-t-xl text-center mb-1 w-full border border-yellow-200">
-                                        <p className="text-[10px] font-black uppercase text-yellow-700 truncate px-1">{challengeSettings.goldName}</p>
-                                    </div>
-                                    <div className="gold-gradient w-full h-36 rounded-t-lg flex items-center justify-center shadow-xl">
-                                        <span className="text-4xl font-black italic text-white/50">1</span>
-                                    </div>
-                                </div>
-                                {/* BRONS */}
-                                <div className="flex flex-col items-center flex-1">
-                                    <div className="bg-orange-50 p-2 rounded-t-xl text-center mb-1 w-full">
-                                        <p className="text-[9px] font-black uppercase text-orange-800 truncate px-1">{challengeSettings.bronzeName}</p>
-                                    </div>
-                                    <div className="bronze-gradient w-full h-16 rounded-t-lg flex items-center justify-center shadow-lg">
-                                        <span className="text-2xl font-black italic text-white/50">3</span>
-                                    </div>
-                                </div>
-                            </div>
-                            <p className="text-center text-[9px] font-bold text-slate-400 uppercase italic mt-4">Nieuwe stand elke zondag om 20:00!</p>
-                        </Card>
-
-                        {/* PROTOCOL */}
-                        <div className="mb-6">
-                            <button 
-                                onClick={() => window.open(challengeSettings.protocolUrl || '#')}
-                                className="w-full bg-slate-900 text-white p-5 rounded-[2rem] flex items-center justify-between shadow-xl group active:scale-95 transition-all"
-                            >
-                                <div className="flex items-center gap-4">
-                                    <div className="bg-white/10 p-3 rounded-2xl"><FileText size={20} className="text-orange-400"/></div>
-                                    <div className="text-left">
-                                        <p className="text-[9px] font-black uppercase italic text-orange-400">Download nu</p>
-                                        <p className="text-sm font-black italic uppercase">Het 8-Weken Protocol</p>
-                                    </div>
-                                </div>
-                                <ChevronRight className="group-hover:translate-x-1 transition-transform" />
-                            </button>
-                        </div>
-
-                        {/* NIEUWE COMMUNITY CHAT */}
-                        <Card title="Challenge Community" icon={MessageCircle}>
-                            <div className="bg-slate-50 rounded-2xl p-4 h-64 overflow-y-auto mb-4 flex flex-col gap-3 border border-slate-100 hide-scrollbar">
-                                {chatMessages.length === 0 && (
-                                    <p className="text-center text-[10px] text-slate-400 italic my-auto">Start het gesprek! Daag de rest uit 🔥</p>
-                                )}
-                                {chatMessages.map(msg => {
-                                    const isMe = msg.sender === formData.clientName;
-                                    return (
-                                        <div key={msg.id} className={`max-w-[85%] rounded-2xl p-3 shadow-sm ${isMe ? 'bg-orange-500 text-white self-end rounded-tr-sm' : 'bg-white text-slate-800 border border-slate-100 self-start rounded-tl-sm'}`}>
-                                            {!isMe && <p className="text-[8px] font-black uppercase text-orange-500 mb-1">{msg.sender}</p>}
-                                            <p className="text-[11px] font-bold">{msg.text}</p>
-                                        </div>
-                                    );
-                                })}
-                            </div>
-                            <form onSubmit={sendChatMessage} className="flex gap-2">
-                                <input 
-                                    type="text" 
-                                    value={newMessage} 
-                                    onChange={(e) => setNewMessage(e.target.value)} 
-                                    placeholder="Stuur een bericht..." 
-                                    className="flex-1 bg-gray-100 border-none rounded-xl px-4 py-3 text-[11px] font-bold outline-none focus:ring-2 focus:ring-orange-500"
-                                />
-                                <button type="submit" className="bg-orange-500 text-white p-3 rounded-xl hover:bg-orange-600 transition-colors">
-                                    <Send size={16} />
-                                </button>
-                            </form>
-                        </Card>
-
-                        {/* NIEUWE WALL OF EFFECT */}
-                        <Card title="Wall of Effect" icon={Star} className="border-yellow-200 bg-gradient-to-br from-yellow-50 to-white">
-                            <p className="text-[10px] font-bold text-slate-500 uppercase italic mb-4 text-center">Dit zijn onze vorige legendes. Sta jij hier straks ook?</p>
-                            
-                            <div className="grid grid-cols-2 gap-4">
-                                {(challengeSettings.wallOfEffect || []).map((w, i) => (
-                                    <div key={i} className="relative gold-gradient p-1 rounded-2xl shadow-lg">
-                                        <div className="bg-slate-900 rounded-xl overflow-hidden text-center h-full flex flex-col">
-                                            <img src={w.photoBase64} alt={w.name} className="w-full aspect-square object-cover border-b-2 border-yellow-500/30" />
-                                            <div className="p-3 flex-1 flex flex-col justify-center">
-                                                <p className="text-yellow-400 font-black italic uppercase text-[11px] leading-tight mb-1">{w.name}</p>
-                                                <p className="text-white/80 text-[9px] italic leading-tight">{w.info}</p>
-                                            </div>
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
-                            
-                            {!(challengeSettings.wallOfEffect && challengeSettings.wallOfEffect.length > 0) && (
-                                <p className="text-center text-[10px] text-slate-400 italic">Nog geen kampioenen bekend. Word jij de eerste?</p>
-                            )}
-                        </Card>
-                    </>
-                )}
             </div>
           ) : clientTab === 'webshop' ? (
              <div className="animate-in fade-in slide-in-from-right-4 duration-500 pb-10">
                 <div className="mb-8 text-center">
                     <h2 className="text-2xl font-black italic uppercase tracking-tight text-slate-800">For-Effect Shop 🛒</h2>
+                    <p className="text-[10px] font-bold text-red-600 uppercase italic mt-1">Exclusief voor actieve cliënten</p>
                 </div>
+
+                {clientData.daysLeft !== null && clientData.daysLeft <= 14 && clientData.daysLeft >= 0 && (
+                    <div className="bg-red-50 border border-red-200 rounded-[2rem] p-5 mb-6 text-center shadow-sm">
+                        <Timer className="text-red-500 mx-auto mb-2" size={28} />
+                        <p className="text-sm font-black italic text-slate-800 uppercase mb-1">Nog {clientData.daysLeft} dagen tot einde traject!</p>
+                        <p className="text-[10px] font-bold text-slate-500 uppercase">Verleng direct via de onderstaande knoppen.</p>
+                    </div>
+                )}
+
                 <Card title="Jouw VIP Voordelen" icon={Gift}>
-                    <div className="bg-slate-900 text-white rounded-2xl p-4 flex justify-between items-center">
-                        <div><p className="text-[9px] font-black uppercase text-slate-400">Jouw Kortingscode</p><p className="text-lg font-black uppercase">FOREFFECT10</p></div>
+                    <p className="text-[11px] font-bold text-slate-500 mb-4 leading-relaxed">
+                        Als actieve For-Effect cliënt krijg je altijd voorrang op nieuwe drops en behoud je korting bij verlengingen.
+                    </p>
+                    <div className="bg-slate-900 text-white rounded-2xl p-4 flex justify-between items-center border border-slate-800">
+                        <div>
+                            <p className="text-[9px] font-black uppercase italic text-slate-400">Jouw Kortingscode</p>
+                            <p className="text-lg font-black tracking-widest uppercase">FOREFFECT10</p>
+                        </div>
                         <Tag className="text-red-500" size={24} />
                     </div>
                 </Card>
+
                 <div className="space-y-4 mt-6">
-                    <button onClick={() => window.open(clientData.webshopUrl || 'https://www.google.com/search?q=for-effect+shop')} className="w-full py-5 bg-green-600 text-white rounded-[2rem] font-black italic uppercase shadow-xl flex items-center justify-center gap-3">
+                    {/* Aangepaste GROENE hoofdknop */}
+                    <button onClick={() => window.open(clientData.webshopUrl || 'https://www.google.com/search?q=for-effect+shop')} className="w-full py-5 bg-green-600 text-white rounded-[2rem] font-black italic uppercase shadow-xl flex items-center justify-center gap-3 active:scale-[0.98] transition-transform">
                         <ShoppingCart size={18} /> Verleng jouw progressie
                     </button>
-                    <button onClick={() => window.open(clientData.extraToolsUrl || 'https://www.google.com/search?q=for-effect+tools')} className="w-full py-4 bg-slate-100 text-slate-600 rounded-[2rem] font-black italic uppercase flex items-center justify-center gap-3">
-                        <Tag size={18} /> Bekijk onze extra tools
-                    </button>
+                    
+                    <div className="pt-2">
+                        {/* Aangepaste onderste knop met eigen specifieke URL optie */}
+                        <button onClick={() => window.open(clientData.extraToolsUrl || 'https://www.google.com/search?q=for-effect+tools')} className="w-full py-4 bg-slate-100 text-slate-600 rounded-[2rem] font-black italic uppercase flex items-center justify-center gap-3 hover:bg-slate-200 active:scale-[0.98] transition-all">
+                            <Tag size={18} /> Bekijk onze extra tools
+                        </button>
+                    </div>
                 </div>
             </div>
           ) : (
             <div className="animate-in fade-in slide-in-from-right-4 duration-500">
-                <h2 className="text-3xl font-black italic uppercase text-center mb-10 text-slate-800">Check-in</h2>
-                {/* CHECK-IN FORMULIER BLIJFT ONGEWIJZIGD */}
-                <Card title="Basis" icon={Users}><div className="grid grid-cols-1 md:grid-cols-2 gap-4"><FormInput name="clientName" value={formData.clientName} readOnly className="opacity-50" /><FormInput type="date" name="date" value={formData.date} onChange={handleChange} /></div></Card>
-                <Card title="Metingen" icon={TrendingDown}><div className="grid grid-cols-2 gap-4"><FormInput label="Gewicht (kg)" type="number" name="weight" value={formData.weight} onChange={handleChange} /><FormInput label="Slaap (u)" type="number" name="sleepHours" value={formData.sleepHours} onChange={handleChange} /></div></Card>
-                <Card title="Mentale Staat" icon={Smile}><SliderField label="Motivatie" name="motivation" value={formData.motivation} onChange={handleChange} /><SliderField label="Energie" name="energy" value={formData.energy} onChange={handleChange} /><SliderField label="Stress" name="mentalStress" value={formData.mentalStress} onChange={handleChange} /></Card>
-                <Card title="Herstel & Gezondheid" icon={Stethoscope}><FormInput name="illnessSigns" placeholder="Ziekteverschijnselen?" value={formData.illnessSigns} onChange={handleChange} /><FormInput name="musclePain" placeholder="Waar heb je spierpijn?" value={formData.musclePain} onChange={handleChange} /></Card>
-                <Card title="Hydratatie & Cyclus" icon={Droplets}><SliderField label="Waterinname" name="waterLiters" value={formData.waterLiters} min="0" max="6" step="0.5" unit=" L" onChange={handleChange} /><div className="grid grid-cols-2 gap-4"><FormInput label="Eiwitten (g)" type="number" name="proteinGrams" value={formData.proteinGrams} onChange={handleChange} /><div className="flex flex-col"><label className="text-[10px] font-bold text-slate-400 uppercase mb-1">Cyclus</label><select name="cyclePhase" value={formData.cyclePhase} onChange={handleChange} className="bg-gray-50 rounded-2xl p-4 text-sm font-bold border-none"><option>N.v.t.</option><option>Week 1</option><option>Week 2</option><option>Week 3</option><option>Week 4 (PMS)</option><option>Menstruatie</option></select></div></div></Card>
-                <Card title="Voeding & Spijsvertering" icon={Apple}><SliderField label="Honger" name="hunger" value={formData.hunger} onChange={handleChange} /><FormInput name="cravings" placeholder="Cravings vandaag?" value={formData.cravings} onChange={handleChange} /><div className="grid grid-cols-2 gap-4 mb-2"><FormInput label="Stoelgang (#)" type="number" name="bowelFrequency" value={formData.bowelFrequency} onChange={handleChange} /><div className="flex flex-col"><label className="text-[10px] font-bold text-slate-400 uppercase mb-1">Kwaliteit</label><select name="bowelQuality" value={formData.bowelQuality} onChange={handleChange} className="bg-gray-50 rounded-2xl p-4 text-sm font-bold border-none"><option>Normaal</option><option>Hard</option><option>Dun</option></select></div></div><FormInput name="bloating" placeholder="Opgeblazen gevoel?" value={formData.bloating} onChange={handleChange} /></Card>
-                <Card title="Training" icon={Dumbbell}><label className="flex items-center gap-3 p-4 bg-gray-50 rounded-2xl cursor-pointer mb-6"><input type="checkbox" name="trainingDay" checked={formData.trainingDay} onChange={handleChange} className="w-5 h-5 rounded text-red-600" /><span className="font-black italic uppercase text-xs">Vandaag getraind</span></label><div className="grid grid-cols-2 gap-4"><FormInput label="Duur (min)" type="number" name="trainingDuration" value={formData.trainingDuration} onChange={handleChange} /><div className="flex flex-col"><label className="text-[10px] font-bold text-slate-400 uppercase mb-1">Zwaarte (RPE)</label><select name="trainingRpe" value={formData.trainingRpe} onChange={handleChange} className="bg-gray-50 rounded-2xl p-4 text-sm font-bold border-none"><option value="5">5 - Gemiddeld</option><option value="6">6 - Pittig</option><option value="7">7 - Zwaar</option><option value="8">8 - Zeer Zwaar</option><option value="9">9 - Maximaal</option><option value="10">10 - Tot Falen</option></select></div></div><div className="grid grid-cols-2 gap-4 mb-4"><FormInput label="Stappen" type="number" name="steps" value={formData.steps} onChange={handleChange} /><FormInput label="Calorieën" type="number" name="calories" value={formData.calories} onChange={handleChange} /></div><textarea name="trainingDetails" placeholder="Details?" value={formData.trainingDetails} onChange={handleChange} className="w-full bg-gray-50 border-none rounded-2xl p-5 text-sm font-bold outline-none shadow-sm min-h-[80px]" /></Card>
-                <Card title="Leefstijl & Mindset" icon={Brain}><FormInput icon={Smartphone} label="Schermtijd (u)" type="number" name="screenTime" value={formData.screenTime} onChange={handleChange} /><SliderField label="Cijfer voor je dag" name="dailyRating" value={formData.dailyRating} onChange={handleChange} /><FormInput name="gratefulFor" placeholder="Dankbaar voor?" value={formData.gratefulFor} onChange={handleChange} /><FormInput name="biggestChallenge" placeholder="Grootste uitdaging?" value={formData.biggestChallenge} onChange={handleChange} /></Card>
-                <Card title="Reflectie & Foto" icon={Target}><FormInput icon={Trophy} name="biggestWin" placeholder="Grootste winst?" value={formData.biggestWin} onChange={handleChange} /><label className="flex items-center gap-3 p-4 bg-gray-50 rounded-2xl cursor-pointer mb-6"><input type="checkbox" name="supplements" checked={formData.supplements} onChange={handleChange} className="w-5 h-5 rounded text-red-600" /><span className="font-black italic uppercase text-xs">Supplementen genomen</span></label><div className="bg-red-50 p-6 rounded-2xl border border-red-100 flex flex-col items-center justify-center relative overflow-hidden min-h-[100px]">{formData.photoBase64 ? <Check size={32} className="text-green-500" /> : <><Camera size={24} className="text-red-600 mb-2" /><input type="file" accept="image/*" onChange={handleImageUpload} className="absolute inset-0 opacity-0 cursor-pointer" /></>}</div></Card>
-                <div className="mt-8 pb-10"><button onClick={handleSubmit} disabled={isSubmitting} style={{ backgroundColor: BRAND_RED }} className="w-full py-5 text-white rounded-3xl font-black italic uppercase shadow-xl flex items-center justify-center gap-3">{isSubmitting ? "Bezig..." : "Update Dashboard"}</button></div>
+                <h2 className="text-3xl font-black italic uppercase text-center mb-10 tracking-tight text-slate-800">Check-in</h2>
+                <Card title="Basis" icon={Users}>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <FormInput name="clientName" value={formData.clientName} readOnly className="opacity-50" />
+                        <FormInput type="date" name="date" value={formData.date} onChange={handleChange} />
+                    </div>
+                </Card>
+                <Card title="Metingen" icon={TrendingDown}>
+                    <div className="grid grid-cols-2 gap-4">
+                        <FormInput label="Gewicht (kg)" type="number" name="weight" placeholder="00.0" value={formData.weight} onChange={handleChange} />
+                        <FormInput label="Slaap (u)" type="number" name="sleepHours" value={formData.sleepHours} onChange={handleChange} />
+                    </div>
+                </Card>
+                <Card title="Mentale Staat" icon={Smile}>
+                    <SliderField label="Motivatie" name="motivation" value={formData.motivation} onChange={handleChange} />
+                    <SliderField label="Energie" name="energy" value={formData.energy} onChange={handleChange} />
+                    <SliderField label="Stress" name="mentalStress" value={formData.mentalStress} onChange={handleChange} />
+                </Card>
+                <Card title="Herstel & Gezondheid" icon={Stethoscope}>
+                    <FormInput name="illnessSigns" placeholder="Ziekteverschijnselen?" value={formData.illnessSigns} onChange={handleChange} />
+                    <FormInput name="musclePain" placeholder="Waar heb je spierpijn?" value={formData.musclePain} onChange={handleChange} />
+                </Card>
+                <Card title="Hydratatie & Cyclus" icon={Droplets}>
+                    <SliderField label="Waterinname" name="waterLiters" value={formData.waterLiters} min="0" max="6" step="0.5" unit=" L" onChange={handleChange} />
+                    <div className="grid grid-cols-2 gap-4">
+                        <FormInput label="Eiwitten (g)" type="number" name="proteinGrams" placeholder="Bijv. 160" value={formData.proteinGrams} onChange={handleChange} />
+                        <div className="flex flex-col">
+                            <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 ml-1">Cyclus</label>
+                            <select name="cyclePhase" value={formData.cyclePhase} onChange={handleChange} className="bg-gray-50 rounded-2xl p-4 text-sm font-bold outline-none border-none shadow-sm h-[52px]">
+                                <option>N.v.t.</option><option>Week 1</option><option>Week 2</option><option>Week 3</option><option>Week 4 (PMS)</option><option>Menstruatie</option>
+                            </select>
+                        </div>
+                    </div>
+                </Card>
+                <Card title="Voeding & Spijsvertering" icon={Apple}>
+                    <SliderField label="Honger" name="hunger" value={formData.hunger} onChange={handleChange} />
+                    <FormInput name="cravings" placeholder="Cravings vandaag?" value={formData.cravings} onChange={handleChange} />
+                    <div className="grid grid-cols-2 gap-4 mb-2">
+                        <FormInput label="Stoelgang (#)" type="number" name="bowelFrequency" value={formData.bowelFrequency} onChange={handleChange} />
+                        <div className="flex flex-col">
+                            <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 ml-1">Kwaliteit</label>
+                            <select name="bowelQuality" value={formData.bowelQuality} onChange={handleChange} className="bg-gray-50 rounded-2xl p-4 text-sm font-bold outline-none border-none shadow-sm h-[52px]">
+                                <option>Normaal</option><option>Hard</option><option>Dun</option>
+                            </select>
+                        </div>
+                    </div>
+                    <FormInput name="bloating" placeholder="Opgeblazen gevoel?" value={formData.bloating} onChange={handleChange} />
+                </Card>
+                <Card title="Training" icon={Dumbbell}>
+                    <label className="flex items-center gap-3 p-4 bg-gray-50 rounded-2xl cursor-pointer mb-6 shadow-sm">
+                        <input type="checkbox" name="trainingDay" checked={formData.trainingDay} onChange={handleChange} className="w-5 h-5 rounded text-red-600" />
+                        <span className="font-black italic uppercase text-xs">Vandaag getraind</span>
+                    </label>
+                    <div className="grid grid-cols-2 gap-4 mb-4">
+                        <FormInput label="Duur (min)" type="number" name="trainingDuration" placeholder="0" value={formData.trainingDuration} onChange={handleChange} />
+                        <div className="flex flex-col">
+                            <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 ml-1">Zwaarte (RPE)</label>
+                            <select name="trainingRpe" value={formData.trainingRpe} onChange={handleChange} className="bg-gray-50 rounded-2xl p-4 text-sm font-bold outline-none border-none shadow-sm h-[52px]">
+                                <option value="5">5 - Gemiddeld</option><option value="6">6 - Pittig</option><option value="7">7 - Zwaar</option><option value="8">8 - Zeer Zwaar</option><option value="9">9 - Maximaal</option><option value="10">10 - Tot Falen</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4 mb-4">
+                        <FormInput label="Stappen" type="number" name="steps" placeholder="0" value={formData.steps} onChange={handleChange} />
+                        <FormInput label="Calorieën" type="number" name="calories" placeholder="0" value={formData.calories} onChange={handleChange} />
+                    </div>
+                    <textarea name="trainingDetails" placeholder="Details?" value={formData.trainingDetails} onChange={handleChange} className="w-full bg-gray-50 border-none rounded-2xl p-5 text-sm font-bold outline-none shadow-sm min-h-[80px]" />
+                </Card>
+                <Card title="Leefstijl & Mindset" icon={Brain}>
+                    <FormInput icon={Smartphone} label="Schermtijd (u)" type="number" name="screenTime" placeholder="Bijv. 4" value={formData.screenTime} onChange={handleChange} />
+                    <SliderField label="Cijfer voor je dag" name="dailyRating" value={formData.dailyRating} onChange={handleChange} />
+                    <FormInput name="gratefulFor" placeholder="Dankbaar voor?" value={formData.gratefulFor} onChange={handleChange} />
+                    <FormInput name="biggestChallenge" placeholder="Grootste uitdaging?" value={formData.biggestChallenge} onChange={handleChange} />
+                </Card>
+                <Card title="Reflectie & Foto" icon={Target}>
+                    <FormInput icon={Trophy} name="biggestWin" placeholder="Grootste winst?" value={formData.biggestWin} onChange={handleChange} />
+                    <label className="flex items-center gap-3 p-4 bg-gray-50 rounded-2xl cursor-pointer mb-6 shadow-sm">
+                        <input type="checkbox" name="supplements" checked={formData.supplements} onChange={handleChange} className="w-5 h-5 rounded text-red-600" />
+                        <span className="font-black italic uppercase text-xs">Supplementen genomen</span>
+                    </label>
+                    <div className="bg-red-50 p-6 rounded-2xl border border-red-100 flex flex-col items-center justify-center relative overflow-hidden min-h-[100px]">
+                        {formData.photoBase64 ? (
+                            <div className="flex flex-col items-center gap-2">
+                                <Check size={32} className="text-green-500" />
+                                <span className="text-[10px] font-black uppercase italic text-green-700">Foto toegevoegd</span>
+                                <button onClick={() => setFormData(prev => ({...prev, photoBase64: ''}))} className="text-[9px] text-red-500 underline">Verwijder</button>
+                            </div>
+                        ) : (
+                            <>
+                                <Camera size={24} className="text-red-600 mb-2" />
+                                <span className="text-[10px] font-black uppercase italic text-red-600">Upload progressiefoto</span>
+                                <input type="file" accept="image/*" onChange={handleImageUpload} className="absolute inset-0 opacity-0 cursor-pointer w-full h-full" />
+                            </>
+                        )}
+                    </div>
+                </Card>
+                <div className="mt-8 pb-10">
+                  <button onClick={handleSubmit} disabled={isSubmitting} style={{ backgroundColor: BRAND_RED }} className="w-full py-5 text-white rounded-3xl font-black italic uppercase shadow-xl flex items-center justify-center gap-3 active:scale-[0.98] transition-transform">
+                    <Activity size={18} /> {isSubmitting ? "Bezig..." : "Update Dashboard"}
+                  </button>
+                </div>
             </div>
           )
         ) : (
           <div className="py-24 text-center">
             <div className="w-24 h-24 bg-green-50 text-green-500 rounded-full flex items-center justify-center mx-auto mb-8 animate-bounce"><CheckCircle2 size={48} /></div>
             <h2 className="text-4xl font-black italic uppercase mb-10">Ontvangen!</h2>
-            <button onClick={() => { setStep('form'); setClientTab('dashboard'); }} style={{ backgroundColor: BRAND_RED }} className="px-12 py-5 text-white rounded-full font-black italic uppercase mx-auto flex items-center gap-3"><ChevronRight size={18}/> Naar Dashboard</button>
+            <button onClick={() => { setStep('form'); setClientTab('dashboard'); }} style={{ backgroundColor: BRAND_RED }} className="px-12 py-5 text-white rounded-full font-black italic uppercase mx-auto flex items-center gap-3">
+              <ChevronRight size={18}/> Naar Dashboard
+            </button>
           </div>
         )}
       </div>
