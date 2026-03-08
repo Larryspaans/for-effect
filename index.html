@@ -30,6 +30,9 @@
     <style>
         .no-select { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
         input[type="checkbox"]:checked + span { text-decoration: line-through; opacity: 0.5; }
+        /* Hide scrollbar for the menu */
+        .hide-scrollbar::-webkit-scrollbar { display: none; }
+        .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
     </style>
 </head>
 <body class="bg-[#FDFDFD] no-select" oncontextmenu="return false;">
@@ -41,7 +44,8 @@ import { createRoot } from 'react-dom/client';
 import { 
   Calendar, Smile, CheckCircle2, Users, MessageCircle, TrendingDown, 
   Lock, X, Trophy, Target, Activity, Dumbbell, Apple, 
-  Stethoscope, ChevronRight, Droplets, Camera, Check, Brain, Smartphone, AlertCircle, Trash2, Eye, EyeOff, Search, UserPlus, Flame, BarChart3, Zap, Star, FileText, Save, ListTodo
+  Stethoscope, ChevronRight, Droplets, Camera, Check, Brain, Smartphone, AlertCircle, Trash2, Eye, EyeOff, Search, UserPlus, Flame, BarChart3, Zap, Star, FileText, Save, ListTodo,
+  ShoppingCart, Clock, Tag, Gift, Timer
 } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
 import { getFirestore, collection, addDoc, onSnapshot, query, serverTimestamp, doc, deleteDoc, setDoc, getDocs, updateDoc } from 'firebase/firestore';
@@ -219,9 +223,13 @@ const App = () => {
         name: newClientName.trim(),
         code: newClientCode.trim(),
         schemaUrl: '',
+        schemaUrl2: '',    // NIEUW: 2e Schema link
         weeklyChallenge: '',
         task1: '', task2: '', task3: '',
         task1Done: false, task2Done: false, task3Done: false,
+        endDate: '',
+        webshopUrl: '',
+        extraToolsUrl: '', // NIEUW: Extra tools link
         createdAt: serverTimestamp()
       });
       setNewClientName('');
@@ -315,6 +323,14 @@ const App = () => {
     const trainingsCount = data.filter(s => s.trainingDay === true).length;
     const avgProtein = data.length > 0 ? (data.reduce((acc, curr) => acc + (Number(curr.proteinGrams) || 0), 0) / data.length).toFixed(0) : 0;
 
+    let daysLeft = null;
+    if (clientInfo?.endDate) {
+        const end = new Date(clientInfo.endDate);
+        const now = new Date();
+        const diffTime = end - now;
+        daysLeft = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    }
+
     return {
         clientId: clientInfo?.id,
         count: data.length,
@@ -326,10 +342,14 @@ const App = () => {
         streak: streakCount,
         latestWin: data[0]?.biggestWin || '',
         schemaUrl: clientInfo?.schemaUrl || '',
+        schemaUrl2: clientInfo?.schemaUrl2 || '',
         weeklyChallenge: clientInfo?.weeklyChallenge || '',
         task1: clientInfo?.task1 || '', task2: clientInfo?.task2 || '', task3: clientInfo?.task3 || '',
         task1Done: clientInfo?.task1Done || false, task2Done: clientInfo?.task2Done || false, task3Done: clientInfo?.task3Done || false,
-        // --- CHALLENGE BAR PERCENTAGES ---
+        endDate: clientInfo?.endDate || '',
+        webshopUrl: clientInfo?.webshopUrl || '',
+        extraToolsUrl: clientInfo?.extraToolsUrl || '',
+        daysLeft,
         percWater: Math.min(100, Math.round((avgWater / 2.5) * 100)),
         percTraining: Math.min(100, Math.round((trainingsCount / 3) * 100)),
         percSleep: Math.min(100, Math.round((avgSleep / 7) * 100)),
@@ -430,12 +450,24 @@ const App = () => {
                                     <input 
                                         type="text" 
                                         defaultValue={c.schemaUrl} 
-                                        placeholder="PDF Link (Schema)" 
+                                        placeholder="PDF Link (Schema 1)" 
                                         className="flex-1 bg-gray-50 border-none rounded-xl p-3 text-[10px] font-bold outline-none"
                                         onBlur={(e) => updateClientField(c.id, 'schemaUrl', e.target.value)}
                                     />
                                     <div className="bg-slate-100 p-3 rounded-xl text-slate-400"><FileText size={14}/></div>
                                 </div>
+                                {/* 2e SCHEMA LINK */}
+                                <div className="flex gap-2">
+                                    <input 
+                                        type="text" 
+                                        defaultValue={c.schemaUrl2} 
+                                        placeholder="PDF Link (Schema 2)" 
+                                        className="flex-1 bg-gray-50 border-none rounded-xl p-3 text-[10px] font-bold outline-none"
+                                        onBlur={(e) => updateClientField(c.id, 'schemaUrl2', e.target.value)}
+                                    />
+                                    <div className="bg-slate-100 p-3 rounded-xl text-slate-400"><FileText size={14}/></div>
+                                </div>
+
                                 <div className="flex gap-2">
                                     <input 
                                         type="text" 
@@ -460,6 +492,38 @@ const App = () => {
                                             <div className="bg-slate-100 p-3 rounded-xl text-green-500"><ListTodo size={14}/></div>
                                         </div>
                                     ))}
+                                </div>
+                                <div className="grid grid-cols-1 gap-2 mt-2 border-t pt-2 border-slate-50">
+                                    <p className="text-[9px] font-black uppercase italic text-slate-400">Verkoop & Retentie (Timer):</p>
+                                    <div className="flex gap-2">
+                                        <input 
+                                            type="date" 
+                                            defaultValue={c.endDate} 
+                                            className="flex-1 bg-gray-50 border-none rounded-xl p-3 text-[10px] font-bold outline-none text-slate-600"
+                                            onBlur={(e) => updateClientField(c.id, 'endDate', e.target.value)}
+                                        />
+                                        <div className="bg-slate-100 p-3 rounded-xl text-orange-500"><Clock size={14}/></div>
+                                    </div>
+                                    <div className="flex gap-2">
+                                        <input 
+                                            type="text" 
+                                            defaultValue={c.webshopUrl} 
+                                            placeholder="Link voor 'Verleng jouw progressie'" 
+                                            className="flex-1 bg-gray-50 border-none rounded-xl p-3 text-[10px] font-bold outline-none"
+                                            onBlur={(e) => updateClientField(c.id, 'webshopUrl', e.target.value)}
+                                        />
+                                        <div className="bg-slate-100 p-3 rounded-xl text-green-500"><ShoppingCart size={14}/></div>
+                                    </div>
+                                    <div className="flex gap-2">
+                                        <input 
+                                            type="text" 
+                                            defaultValue={c.extraToolsUrl} 
+                                            placeholder="Link voor 'Bekijk onze extra tools'" 
+                                            className="flex-1 bg-gray-50 border-none rounded-xl p-3 text-[10px] font-bold outline-none"
+                                            onBlur={(e) => updateClientField(c.id, 'extraToolsUrl', e.target.value)}
+                                        />
+                                        <div className="bg-slate-100 p-3 rounded-xl text-purple-500"><Tag size={14}/></div>
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -522,15 +586,18 @@ const App = () => {
 
       <div className="max-w-2xl mx-auto px-4">
         {step === 'form' && (
-            <div className="flex bg-gray-100 p-1.5 rounded-3xl mb-8">
-                <button onClick={() => setClientTab('dashboard')} className={`flex-1 py-3 rounded-[1.4rem] text-[10px] font-black uppercase italic transition-all flex items-center justify-center gap-2 ${clientTab === 'dashboard' ? 'bg-white shadow-sm text-red-600' : 'text-slate-400'}`}>
-                    <BarChart3 size={14}/> Dashboard
+            <div className="flex bg-gray-100 p-1.5 rounded-3xl mb-8 overflow-x-auto hide-scrollbar gap-1">
+                <button onClick={() => setClientTab('dashboard')} className={`flex-1 min-w-[70px] py-3 rounded-[1.4rem] text-[9px] font-black uppercase italic transition-all flex flex-col items-center justify-center gap-1.5 ${clientTab === 'dashboard' ? 'bg-white shadow-sm text-red-600' : 'text-slate-400'}`}>
+                    <BarChart3 size={16}/> Dash
                 </button>
-                <button onClick={() => setClientTab('form')} className={`flex-1 py-3 rounded-[1.4rem] text-[10px] font-black uppercase italic transition-all flex items-center justify-center gap-2 ${clientTab === 'form' ? 'bg-white shadow-sm text-red-600' : 'text-slate-400'}`}>
-                    <Activity size={14}/> Check-in
+                <button onClick={() => setClientTab('form')} className={`flex-1 min-w-[70px] py-3 rounded-[1.4rem] text-[9px] font-black uppercase italic transition-all flex flex-col items-center justify-center gap-1.5 ${clientTab === 'form' ? 'bg-white shadow-sm text-red-600' : 'text-slate-400'}`}>
+                    <Activity size={16}/> Check-in
                 </button>
-                <button onClick={() => setClientTab('schemas')} className={`flex-1 py-3 rounded-[1.4rem] text-[10px] font-black uppercase italic transition-all flex items-center justify-center gap-2 ${clientTab === 'schemas' ? 'bg-white shadow-sm text-red-600' : 'text-slate-400'}`}>
-                    <FileText size={14}/> Schema's
+                <button onClick={() => setClientTab('schemas')} className={`flex-1 min-w-[70px] py-3 rounded-[1.4rem] text-[9px] font-black uppercase italic transition-all flex flex-col items-center justify-center gap-1.5 ${clientTab === 'schemas' ? 'bg-white shadow-sm text-red-600' : 'text-slate-400'}`}>
+                    <FileText size={16}/> Schema's
+                </button>
+                <button onClick={() => setClientTab('webshop')} className={`flex-1 min-w-[70px] py-3 rounded-[1.4rem] text-[9px] font-black uppercase italic transition-all flex flex-col items-center justify-center gap-1.5 ${clientTab === 'webshop' ? 'bg-white shadow-sm text-red-600' : 'text-slate-400'}`}>
+                    <ShoppingCart size={16}/> Shop
                 </button>
             </div>
         )}
@@ -545,6 +612,35 @@ const App = () => {
                     </p>
                 </div>
 
+                {clientData.daysLeft !== null && clientData.daysLeft <= 14 && clientData.daysLeft >= 0 && (
+                    <div className={`rounded-[2rem] p-5 mb-6 flex items-center gap-4 shadow-sm relative overflow-hidden ${clientData.daysLeft <= 7 ? 'bg-red-50 border border-red-200' : 'bg-orange-50 border border-orange-200'}`}>
+                        <Timer className={`absolute right-[-10px] bottom-[-10px] opacity-10 ${clientData.daysLeft <= 7 ? 'text-red-500 fill-red-500' : 'text-orange-500 fill-orange-500'}`} size={64} />
+                        <div className="bg-white p-3 rounded-full shadow-sm">
+                            <Clock size={20} className={clientData.daysLeft <= 7 ? 'text-red-600 animate-pulse' : 'text-orange-500'} />
+                        </div>
+                        <div className="relative z-10 w-full pr-4">
+                            <p className={`text-[9px] font-black uppercase italic mb-0.5 ${clientData.daysLeft <= 7 ? 'text-red-600' : 'text-orange-600'}`}>Traject eindigt bijna</p>
+                            <p className="text-sm font-bold text-slate-800 italic">
+                                Nog maar <span className="text-xl mx-1">{clientData.daysLeft}</span> {clientData.daysLeft === 1 ? 'dag' : 'dagen'}.
+                                {clientData.daysLeft <= 7 && " Verleng nu!"}
+                            </p>
+                            {clientData.daysLeft <= 7 && (
+                                <button onClick={() => setClientTab('webshop')} className="mt-2 text-[10px] font-black uppercase bg-red-600 text-white px-3 py-1.5 rounded-lg shadow-sm">
+                                    Ga naar Shop
+                                </button>
+                            )}
+                        </div>
+                    </div>
+                )}
+                {clientData.daysLeft !== null && clientData.daysLeft < 0 && (
+                     <div className="bg-red-600 rounded-[2rem] p-5 mb-6 flex items-center gap-4 shadow-sm relative overflow-hidden text-white cursor-pointer" onClick={() => setClientTab('webshop')}>
+                        <div className="relative z-10 w-full text-center">
+                            <p className="text-sm font-black uppercase italic mb-1">Je traject is afgelopen</p>
+                            <p className="text-[10px] font-bold italic opacity-90">Verleng je pakket in de shop om door te gaan.</p>
+                        </div>
+                    </div>
+                )}
+
                 {clientData.weeklyChallenge && (
                     <div className="bg-blue-50 border border-blue-200 rounded-[2rem] p-5 mb-6 flex items-center gap-4 shadow-sm relative overflow-hidden">
                         <Zap className="text-blue-400 fill-blue-400 absolute right-[-10px] bottom-[-10px] opacity-20" size={64} />
@@ -556,7 +652,6 @@ const App = () => {
                     </div>
                 )}
 
-                {/* --- WEKELIJKSE CHALLENGES (VOORTGANGS BALKEN) --- */}
                 <Card title="Wekelijkse Challenges" icon={Zap}>
                     <ChallengeBar label="Water (2.5L)" percentage={clientData.percWater} />
                     <ChallengeBar label="Training (3x)" percentage={clientData.percTraining} />
@@ -565,7 +660,6 @@ const App = () => {
                     <ChallengeBar label="Movement (10K)" percentage={clientData.percMovement} />
                 </Card>
 
-                {/* --- MIJN OPDRACHTEN (AFVINKBAAR) --- */}
                 {(clientData.task1 || clientData.task2 || clientData.task3) && (
                     <Card title="Mijn Opdrachten" icon={ListTodo}>
                         <div className="space-y-3">
@@ -636,20 +730,76 @@ const App = () => {
                 <div className="mb-8 text-center">
                     <h2 className="text-2xl font-black italic uppercase tracking-tight text-slate-800">Jouw Schema's 📋</h2>
                 </div>
-                {clientData.schemaUrl ? (
-                    <div className="w-full h-[70vh] rounded-[2rem] overflow-hidden border-4 border-white shadow-2xl relative bg-slate-100">
-                        <iframe 
-                            src={`${clientData.schemaUrl}#toolbar=0&navpanes=0&scrollbar=0`} 
-                            className="w-full h-full"
-                            frameBorder="0"
-                        ></iframe>
-                    </div>
-                ) : (
-                    <div className="text-center py-20 bg-white rounded-[2rem] border border-dashed border-slate-200">
-                        <FileText size={48} className="mx-auto text-slate-200 mb-4" />
-                        <p className="text-[10px] font-black uppercase text-slate-400 italic">Nog geen schema geüpload</p>
+                
+                <div className="flex flex-col gap-6 pb-10">
+                    {clientData.schemaUrl ? (
+                        <div className="w-full h-[65vh] rounded-[2rem] overflow-hidden border-4 border-white shadow-2xl relative bg-slate-100">
+                            <iframe 
+                                src={`${clientData.schemaUrl}#toolbar=0&navpanes=0&scrollbar=0`} 
+                                className="w-full h-full"
+                                frameBorder="0"
+                            ></iframe>
+                        </div>
+                    ) : (
+                        <div className="text-center py-20 bg-white rounded-[2rem] border border-dashed border-slate-200">
+                            <FileText size={48} className="mx-auto text-slate-200 mb-4" />
+                            <p className="text-[10px] font-black uppercase text-slate-400 italic">Nog geen schema geüpload</p>
+                        </div>
+                    )}
+                    
+                    {/* OPTIONEEL TWEEDE SCHEMA */}
+                    {clientData.schemaUrl2 && (
+                        <div className="w-full h-[65vh] rounded-[2rem] overflow-hidden border-4 border-white shadow-2xl relative bg-slate-100">
+                            <iframe 
+                                src={`${clientData.schemaUrl2}#toolbar=0&navpanes=0&scrollbar=0`} 
+                                className="w-full h-full"
+                                frameBorder="0"
+                            ></iframe>
+                        </div>
+                    )}
+                </div>
+            </div>
+          ) : clientTab === 'webshop' ? (
+             <div className="animate-in fade-in slide-in-from-right-4 duration-500 pb-10">
+                <div className="mb-8 text-center">
+                    <h2 className="text-2xl font-black italic uppercase tracking-tight text-slate-800">For-Effect Shop 🛒</h2>
+                    <p className="text-[10px] font-bold text-red-600 uppercase italic mt-1">Exclusief voor actieve cliënten</p>
+                </div>
+
+                {clientData.daysLeft !== null && clientData.daysLeft <= 14 && clientData.daysLeft >= 0 && (
+                    <div className="bg-red-50 border border-red-200 rounded-[2rem] p-5 mb-6 text-center shadow-sm">
+                        <Timer className="text-red-500 mx-auto mb-2" size={28} />
+                        <p className="text-sm font-black italic text-slate-800 uppercase mb-1">Nog {clientData.daysLeft} dagen tot einde traject!</p>
+                        <p className="text-[10px] font-bold text-slate-500 uppercase">Verleng direct via de onderstaande knoppen.</p>
                     </div>
                 )}
+
+                <Card title="Jouw VIP Voordelen" icon={Gift}>
+                    <p className="text-[11px] font-bold text-slate-500 mb-4 leading-relaxed">
+                        Als actieve For-Effect cliënt krijg je altijd voorrang op nieuwe drops en behoud je korting bij verlengingen.
+                    </p>
+                    <div className="bg-slate-900 text-white rounded-2xl p-4 flex justify-between items-center border border-slate-800">
+                        <div>
+                            <p className="text-[9px] font-black uppercase italic text-slate-400">Jouw Kortingscode</p>
+                            <p className="text-lg font-black tracking-widest uppercase">FOREFFECT10</p>
+                        </div>
+                        <Tag className="text-red-500" size={24} />
+                    </div>
+                </Card>
+
+                <div className="space-y-4 mt-6">
+                    {/* Aangepaste GROENE hoofdknop */}
+                    <button onClick={() => window.open(clientData.webshopUrl || 'https://www.google.com/search?q=for-effect+shop')} className="w-full py-5 bg-green-600 text-white rounded-[2rem] font-black italic uppercase shadow-xl flex items-center justify-center gap-3 active:scale-[0.98] transition-transform">
+                        <ShoppingCart size={18} /> Verleng jouw progressie
+                    </button>
+                    
+                    <div className="pt-2">
+                        {/* Aangepaste onderste knop met eigen specifieke URL optie */}
+                        <button onClick={() => window.open(clientData.extraToolsUrl || 'https://www.google.com/search?q=for-effect+tools')} className="w-full py-4 bg-slate-100 text-slate-600 rounded-[2rem] font-black italic uppercase flex items-center justify-center gap-3 hover:bg-slate-200 active:scale-[0.98] transition-all">
+                            <Tag size={18} /> Bekijk onze extra tools
+                        </button>
+                    </div>
+                </div>
             </div>
           ) : (
             <div className="animate-in fade-in slide-in-from-right-4 duration-500">
