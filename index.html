@@ -189,6 +189,7 @@ const App = () => {
   const [submissions, setSubmissions] = useState([]);
   const [clients, setClients] = useState([]);
   
+  // Challenge Settings State
   const [challengeSettings, setChallengeSettings] = useState({
       status: 'Gesloten',
       week: 1,
@@ -212,9 +213,10 @@ const App = () => {
       photoBase64: ''
   });
   
+  // Chat, Share & SOS States
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [showShareModal, setShowShareModal] = useState(false);
-  const [showSOSModal, setShowSOSModal] = useState(false);
+  const [showSOSModal, setShowSOSModal] = useState(false); // NIEUW: SOS State
   const [chatMessages, setChatMessages] = useState([]);
   const [newChatMessage, setNewChatMessage] = useState('');
   const chatEndRef = useRef(null);
@@ -262,6 +264,7 @@ const App = () => {
         if (doc.exists()) setChallengeSettings(doc.data());
     });
     
+    // Chat messages inladen 
     const qChat = query(collection(db, 'challenge_messages'), orderBy('createdAt', 'desc'), limit(50));
     const unsubChat = onSnapshot(qChat, (snapshot) => {
         const msgs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })).reverse();
@@ -325,7 +328,6 @@ const App = () => {
         webshopUrl: '',
         extraToolsUrl: '', 
         isChallengeParticipant: false,
-        personalGoal: '', 
         createdAt: serverTimestamp()
       });
       setNewClientName('');
@@ -447,6 +449,7 @@ const App = () => {
     return submissions.filter(s => (s.clientName || "").toLowerCase().includes(searchTerm.toLowerCase()));
   }, [submissions, searchTerm]);
 
+  // De Slimme Rekenmachine
   const weeklyStats = useMemo(() => {
       const sevenDaysAgo = new Date();
       sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
@@ -569,7 +572,6 @@ const App = () => {
         webshopUrl: clientInfo?.webshopUrl || '',
         extraToolsUrl: clientInfo?.extraToolsUrl || '',
         daysLeft,
-        personalGoal: clientInfo?.personalGoal || '',
         percWater: Math.min(100, Math.round((avgWater / 2.5) * 100)),
         percTraining: Math.min(100, Math.round((trainingsCount / 3) * 100)),
         percSleep: Math.min(100, Math.round((avgSleep / 7) * 100)),
@@ -730,12 +732,6 @@ const App = () => {
                                 </div>
                             </div>
                             <div className="grid grid-cols-1 gap-2">
-                                <FormInput 
-                                    placeholder="Persoonlijk Doel (voor SOS)" 
-                                    value={c.personalGoal || ''} 
-                                    onChange={(e) => updateClientField(c.id, 'personalGoal', e.target.value)} 
-                                    className="text-[10px] !mb-0"
-                                />
                                 <div className="flex gap-2">
                                     <input 
                                         type="text" 
@@ -781,6 +777,38 @@ const App = () => {
                                             <div className="bg-slate-100 p-3 rounded-xl text-green-500"><ListTodo size={14}/></div>
                                         </div>
                                     ))}
+                                </div>
+                                <div className="grid grid-cols-1 gap-2 mt-2 border-t pt-2 border-slate-50">
+                                    <p className="text-[9px] font-black uppercase italic text-slate-400">Verkoop & Retentie (Timer):</p>
+                                    <div className="flex gap-2">
+                                        <input 
+                                            type="date" 
+                                            defaultValue={c.endDate} 
+                                            className="flex-1 bg-gray-50 border-none rounded-xl p-3 text-[10px] font-bold outline-none text-slate-600"
+                                            onBlur={(e) => updateClientField(c.id, 'endDate', e.target.value)}
+                                        />
+                                        <div className="bg-slate-100 p-3 rounded-xl text-orange-500"><Clock size={14}/></div>
+                                    </div>
+                                    <div className="flex gap-2">
+                                        <input 
+                                            type="text" 
+                                            defaultValue={c.webshopUrl} 
+                                            placeholder="Link voor 'Verleng jouw progressie'" 
+                                            className="flex-1 bg-gray-50 border-none rounded-xl p-3 text-[10px] font-bold outline-none"
+                                            onBlur={(e) => updateClientField(c.id, 'webshopUrl', e.target.value)}
+                                        />
+                                        <div className="bg-slate-100 p-3 rounded-xl text-green-500"><ShoppingCart size={14}/></div>
+                                    </div>
+                                    <div className="flex gap-2">
+                                        <input 
+                                            type="text" 
+                                            defaultValue={c.extraToolsUrl} 
+                                            placeholder="Link voor 'Bekijk onze extra tools'" 
+                                            className="flex-1 bg-gray-50 border-none rounded-xl p-3 text-[10px] font-bold outline-none"
+                                            onBlur={(e) => updateClientField(c.id, 'extraToolsUrl', e.target.value)}
+                                        />
+                                        <div className="bg-slate-100 p-3 rounded-xl text-purple-500"><Tag size={14}/></div>
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -939,7 +967,8 @@ const App = () => {
       </div>
 
       <div className="max-w-2xl mx-auto px-4">
-
+        
+        {/* DE INSTA-STORY REPORT CARD MODAL */}
         {showShareModal && (
             <div className="fixed inset-0 z-50 bg-slate-900/95 backdrop-blur-sm overflow-y-auto animate-in fade-in duration-300">
                 <div className="min-h-full flex flex-col items-center justify-center py-10 px-4 relative">
@@ -1020,6 +1049,7 @@ const App = () => {
             </div>
         )}
 
+        {/* SOS MODAL */}
         {showSOSModal && (
             <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/90 backdrop-blur-sm p-4 animate-in fade-in duration-300">
                 <div className="bg-white w-full max-w-sm rounded-[2rem] p-8 text-center shadow-2xl">
@@ -1027,10 +1057,8 @@ const App = () => {
                         <AlertCircle size={32} className="text-red-600" />
                     </div>
                     <h3 className="text-xl font-black italic uppercase mb-2">Adem in, adem uit...</h3>
-                    <p className="text-sm font-bold text-slate-500 mb-8 italic">
-                        Je bent sterker dan deze drang. Denk aan je doel: <strong>{clientData.personalGoal || 'fit zijn voor je gezin'}</strong>. Je staat er niet alleen voor.
-                    </p>
-                    <button onClick={() => window.open(`https://wa.me/?text=${encodeURIComponent(`Hey coach, ik heb even een moeilijk moment. Kun je me helpen?`)}`)} className="w-full py-4 bg-[#E31E24] text-white rounded-2xl font-black italic uppercase mb-3 shadow-lg">Stuur Coach een appje</button>
+                    <p className="text-sm font-bold text-slate-500 mb-8 italic">Je bent sterker dan deze drang. Denk aan je doel: fit zijn voor je gezin. Je staat er niet alleen voor.</p>
+                    <button onClick={() => window.open('https://wa.me/?text=Hey%20coach,%20ik%20heb%20even%20een%20moeilijk%20moment.%20Kun%20je%20me%20helpen?')} className="w-full py-4 bg-[#E31E24] text-white rounded-2xl font-black italic uppercase mb-3 shadow-lg">Stuur Coach een appje</button>
                     <button onClick={() => setShowSOSModal(false)} className="w-full py-4 bg-slate-100 text-slate-600 rounded-2xl font-black italic uppercase">Ik ga ademhalen, bedankt!</button>
                 </div>
             </div>
@@ -1066,10 +1094,12 @@ const App = () => {
                     </p>
                 </div>
 
+                {/* SOS KNOP */}
                 <button onClick={() => setShowSOSModal(true)} className="w-full py-3 bg-red-100 text-red-600 rounded-[2rem] font-black italic uppercase shadow-sm flex items-center justify-center gap-2 mb-6 hover:bg-red-200 transition-all">
                     <AlertCircle size={18} /> SOS: Moeilijk Moment?
                 </button>
 
+                {/* Zondagavond Reminder */}
                 {(new Date().getDay() === 0 && new Date().getHours() >= 18) && (
                     <div className="bg-gradient-to-r from-orange-400 to-[#E31E24] rounded-[2rem] p-5 mb-6 flex items-center gap-4 shadow-lg text-white relative overflow-hidden animate-in fade-in slide-in-from-top-4 duration-500">
                         <Bell className="absolute right-[-10px] bottom-[-10px] text-white/10" size={64} />
@@ -1231,8 +1261,10 @@ const App = () => {
             </div>
           ) : clientTab === 'challenge' ? (
             <div className="animate-in fade-in zoom-in duration-500 pb-10 relative">
+                
                 {!clientData.isChallengeParticipant ? (
                     <div className="text-center mt-12 px-4 animate-in fade-in zoom-in duration-500">
+                        {/* THE LOCK / VIP ICON */}
                         <div className="relative w-32 h-32 mx-auto mb-8">
                             <div className="absolute inset-0 bg-slate-900 rounded-full blur-xl opacity-20"></div>
                             <div className="relative w-full h-full bg-slate-900 rounded-full flex items-center justify-center border-4 border-white shadow-2xl">
@@ -1241,19 +1273,38 @@ const App = () => {
                             </div>
                         </div>
                         
+                        {/* CONDITIONAL CONTENT BASED ON STATUS */}
                         {challengeSettings.status === 'Inschrijving Open' && (
                             <>
                                 <h2 className="text-3xl font-black italic uppercase tracking-tight text-slate-800 mb-4 drop-shadow-sm">De Inschrijving is Geopend!</h2>
-                                <p className="text-sm font-bold text-slate-500 mb-6 italic px-2">Het is zover! De deuren voor de nieuwe 8-Weken Transformatie Challenge staan open. Zorg dat je erbij bent en krijg direct toegang tot:</p>
+                                
+                                <p className="text-sm font-bold text-slate-500 mb-6 italic px-2">
+                                    Het is zover! De deuren voor de nieuwe 8-Weken Transformatie Challenge staan open. Zorg dat je erbij bent en krijg direct toegang tot:
+                                </p>
+
+                                {/* THE OFFER STACK */}
                                 <div className="bg-slate-900 rounded-3xl p-5 mb-8 text-left shadow-xl border border-slate-800 relative overflow-hidden">
                                     <div className="absolute top-[-50px] right-[-50px] w-[100px] h-[100px] bg-[#E31E24] opacity-20 blur-[40px] rounded-full pointer-events-none"></div>
                                     <ul className="space-y-4 relative z-10">
-                                        <li className="flex items-center gap-4 text-white"><span className="bg-white/10 p-2 rounded-xl border border-white/5 shadow-inner"><Smartphone size={16} className="text-blue-400"/></span> <span className="text-xs font-bold uppercase tracking-wider">Exclusieve App Toegang</span></li>
-                                        <li className="flex items-center gap-4 text-white"><span className="bg-white/10 p-2 rounded-xl border border-white/5 shadow-inner"><MessageCircle size={16} className="text-green-400"/></span> <span className="text-xs font-bold uppercase tracking-wider">Real-time Community Chat</span></li>
-                                        <li className="flex items-center gap-4 text-white"><span className="bg-white/10 p-2 rounded-xl border border-white/5 shadow-inner"><Trophy size={16} className="text-yellow-400"/></span> <span className="text-xs font-bold uppercase tracking-wider">Live Podium & Prijzenpot</span></li>
-                                        <li className="flex items-center gap-4 text-white"><span className="bg-white/10 p-2 rounded-xl border border-white/5 shadow-inner"><Share2 size={16} className="text-[#E31E24]"/></span> <span className="text-xs font-bold uppercase tracking-wider">Jouw Insta-Report Card</span></li>
+                                        <li className="flex items-center gap-4 text-white">
+                                            <span className="bg-white/10 p-2 rounded-xl border border-white/5 shadow-inner"><Smartphone size={16} className="text-blue-400"/></span> 
+                                            <span className="text-xs font-bold uppercase tracking-wider">Exclusieve App Toegang</span>
+                                        </li>
+                                        <li className="flex items-center gap-4 text-white">
+                                            <span className="bg-white/10 p-2 rounded-xl border border-white/5 shadow-inner"><MessageCircle size={16} className="text-green-400"/></span> 
+                                            <span className="text-xs font-bold uppercase tracking-wider">Real-time Community Chat</span>
+                                        </li>
+                                        <li className="flex items-center gap-4 text-white">
+                                            <span className="bg-white/10 p-2 rounded-xl border border-white/5 shadow-inner"><Trophy size={16} className="text-yellow-400"/></span> 
+                                            <span className="text-xs font-bold uppercase tracking-wider">Live Podium & Prijzenpot</span>
+                                        </li>
+                                        <li className="flex items-center gap-4 text-white">
+                                            <span className="bg-white/10 p-2 rounded-xl border border-white/5 shadow-inner"><Share2 size={16} className="text-[#E31E24]"/></span> 
+                                            <span className="text-xs font-bold uppercase tracking-wider">Jouw Insta-Report Card</span>
+                                        </li>
                                     </ul>
                                 </div>
+                                
                                 <button onClick={() => window.open(`https://wa.me/?text=${encodeURIComponent(`Hey coach! Ik zie dat de inschrijving voor de nieuwe Challenge geopend is. Ik wil heel graag meedoen en mijn plek claimen! 🏆`)}`)} className="w-full py-5 bg-[#E31E24] text-white rounded-[2rem] font-black italic uppercase shadow-xl flex items-center justify-center gap-3 active:scale-95 transition-all group overflow-hidden relative">
                                     <div className="absolute inset-0 bg-white/20 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700"></div>
                                     <Flame size={20} className="text-white animate-pulse" /> Claim Mijn Plek (Vol = Vol)
@@ -1264,9 +1315,13 @@ const App = () => {
                         {challengeSettings.status === 'Challenge Bezig' && (
                             <>
                                 <h2 className="text-3xl font-black italic uppercase tracking-tight text-slate-800 mb-4 drop-shadow-sm">De VIP Wachtlijst</h2>
+                                
                                 <div className="bg-orange-50/50 border border-orange-100 rounded-2xl p-5 mb-8 shadow-sm">
-                                    <p className="text-sm font-bold text-slate-600 italic leading-relaxed">De huidige 8-Weken Challenge is al in volle gang en zit vol. Wil jij bij de volgende editie wél strijden voor de <span className="text-orange-600">gouden trofee</span> en <span className="text-[#E31E24]">maximale resultaten</span> behalen? Zorg dat je vooraan in de rij staat.</p>
+                                    <p className="text-sm font-bold text-slate-600 italic leading-relaxed">
+                                        De huidige 8-Weken Challenge is al in volle gang en zit vol. Wil jij bij de volgende editie wél strijden voor de <span className="text-orange-600">gouden trofee</span> en <span className="text-[#E31E24]">maximale resultaten</span> behalen? Zorg dat je vooraan in de rij staat.
+                                    </p>
                                 </div>
+                                
                                 <button onClick={() => window.open(`https://wa.me/?text=${encodeURIComponent(`Hey coach! Ik zag de exclusieve 8-Weken Challenge in de app. Zet mij direct op de VIP Wachtlijst voor de volgende editie! 🏆`)}`)} className="w-full py-5 bg-gradient-to-r from-slate-900 to-black text-white rounded-[2rem] font-black italic uppercase shadow-xl flex items-center justify-center gap-3 active:scale-95 transition-all group overflow-hidden relative">
                                     <div className="absolute inset-0 bg-gradient-to-r from-yellow-500/20 to-orange-500/20 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700"></div>
                                     <Ticket size={20} className="text-yellow-500" /> Claim Mijn VIP Plek
@@ -1278,9 +1333,13 @@ const App = () => {
                         {(challengeSettings.status === 'Gesloten' || !challengeSettings.status) && (
                             <>
                                 <h2 className="text-3xl font-black italic uppercase tracking-tight text-slate-800 mb-4 drop-shadow-sm">Challenge Gesloten</h2>
+                                
                                 <div className="bg-slate-50 border border-slate-100 rounded-2xl p-5 mb-8 shadow-sm">
-                                    <p className="text-sm font-bold text-slate-600 italic leading-relaxed">Er is momenteel geen actieve challenge. Maar achter de schermen bereiden we de volgende epische editie al voor. Wil je als allereerste een exclusieve uitnodiging ontvangen?</p>
+                                    <p className="text-sm font-bold text-slate-600 italic leading-relaxed">
+                                        Er is momenteel geen actieve challenge. Maar achter de schermen bereiden we de volgende epische editie al voor. Wil je als allereerste een exclusieve uitnodiging ontvangen?
+                                    </p>
                                 </div>
+                                
                                 <button onClick={() => window.open(`https://wa.me/?text=${encodeURIComponent(`Hey coach! Ik zie dat de challenge nu gesloten is, maar ik wil als eerste op de hoogte zijn wanneer de volgende editie start. Zet mij op de lijst! 🚀`)}`)} className="w-full py-5 bg-slate-900 text-white rounded-[2rem] font-black italic uppercase shadow-xl flex items-center justify-center gap-3 active:scale-95 transition-all">
                                     <Star size={20} className="text-yellow-500" /> Zet mij op de Wachtlijst
                                 </button>
@@ -1289,27 +1348,253 @@ const App = () => {
                     </div>
                 ) : (
                     <>
-                        <button onClick={() => setIsChatOpen(true)} className="fixed bottom-6 right-4 w-14 h-14 bg-[#E31E24] text-white rounded-full shadow-2xl flex items-center justify-center hover:scale-105 active:scale-95 transition-all z-40 border-2 border-white"><MessageCircle size={24} /></button>
+                        <button 
+                            onClick={() => setIsChatOpen(true)}
+                            className="fixed bottom-6 right-4 w-14 h-14 bg-[#E31E24] text-white rounded-full shadow-2xl flex items-center justify-center hover:scale-105 active:scale-95 transition-all z-40 border-2 border-white"
+                        >
+                            <MessageCircle size={24} />
+                        </button>
+
                         {isChatOpen && (
                             <div className="fixed bottom-6 right-4 left-4 md:left-auto md:w-[350px] h-[60vh] md:h-[500px] bg-white rounded-3xl shadow-2xl border border-slate-100 flex flex-col z-50 overflow-hidden animate-in slide-in-from-bottom-10">
-                                <div className="bg-[#E31E24] p-4 text-white flex justify-between items-center shadow-md z-10"><div className="flex items-center gap-2"><Flame size={20} className="text-orange-300" /><h3 className="font-black italic uppercase text-sm tracking-wide">Community Chat</h3></div><button onClick={() => setIsChatOpen(false)} className="text-white hover:text-red-200 bg-black/20 rounded-full p-1.5 transition-colors"><X size={16}/></button></div>
+                                <div className="bg-[#E31E24] p-4 text-white flex justify-between items-center shadow-md z-10">
+                                    <div className="flex items-center gap-2">
+                                        <Flame size={20} className="text-orange-300" />
+                                        <h3 className="font-black italic uppercase text-sm tracking-wide">Community Chat</h3>
+                                    </div>
+                                    <button onClick={() => setIsChatOpen(false)} className="text-white hover:text-red-200 bg-black/20 rounded-full p-1.5 transition-colors">
+                                        <X size={16}/>
+                                    </button>
+                                </div>
+                                
                                 <div className="flex-1 overflow-y-auto p-4 bg-slate-50 space-y-4">
-                                    {chatMessages.map(msg => { const isMe = msg.sender === formData.clientName; return (
-                                        <div key={msg.id} className={`flex flex-col ${isMe ? 'items-end' : 'items-start'}`}>
-                                            <span className="text-[9px] font-black text-slate-400 mb-1 mx-1 uppercase italic tracking-wider">{msg.sender}</span>
-                                            <div className={`px-4 py-2.5 rounded-2xl max-w-[85%] text-sm shadow-sm ${isMe ? 'bg-[#E31E24] text-white rounded-br-sm' : 'bg-white text-slate-700 border border-slate-100 rounded-bl-sm font-medium'}`}>{msg.text}</div>
-                                        </div>
-                                    ); })}
+                                    {chatMessages.map(msg => {
+                                        const isMe = msg.sender === formData.clientName;
+                                        return (
+                                            <div key={msg.id} className={`flex flex-col ${isMe ? 'items-end' : 'items-start'}`}>
+                                                <span className="text-[9px] font-black text-slate-400 mb-1 mx-1 uppercase italic tracking-wider">{msg.sender}</span>
+                                                <div className={`px-4 py-2.5 rounded-2xl max-w-[85%] text-sm shadow-sm ${isMe ? 'bg-[#E31E24] text-white rounded-br-sm' : 'bg-white text-slate-700 border border-slate-100 rounded-bl-sm font-medium'}`}>
+                                                    {msg.text}
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
                                     <div ref={chatEndRef} />
                                 </div>
-                                <form onSubmit={handleSendMessage} className="p-3 bg-white border-t border-slate-100 flex gap-2 items-center"><input type="text" placeholder="Stuur een bericht..." value={newChatMessage} onChange={(e) => setNewChatMessage(e.target.value)} className="flex-1 bg-slate-100 border-none rounded-full px-4 py-3 text-sm font-medium outline-none focus:ring-2 focus:ring-red-500/50 text-slate-800"/><button type="submit" disabled={!newChatMessage.trim()} className="w-11 h-11 bg-[#E31E24] text-white rounded-full flex items-center justify-center shrink-0 disabled:opacity-50 active:scale-95 transition-transform"><Send size={18} className="ml-1" /></button></form>
+
+                                <form onSubmit={handleSendMessage} className="p-3 bg-white border-t border-slate-100 flex gap-2 items-center">
+                                    <input
+                                        type="text"
+                                        placeholder="Stuur een bericht..."
+                                        value={newChatMessage}
+                                        onChange={(e) => setNewChatMessage(e.target.value)}
+                                        className="flex-1 bg-slate-100 border-none rounded-full px-4 py-3 text-sm font-medium outline-none focus:ring-2 focus:ring-red-500/50 text-slate-800"
+                                    />
+                                    <button 
+                                        type="submit" 
+                                        disabled={!newChatMessage.trim()}
+                                        className="w-11 h-11 bg-[#E31E24] text-white rounded-full flex items-center justify-center shrink-0 disabled:opacity-50 active:scale-95 transition-transform"
+                                    >
+                                        <Send size={18} className="ml-1" />
+                                    </button>
+                                </form>
                             </div>
                         )}
-                        <div className="mb-8 text-center"><h2 className="text-3xl font-black italic uppercase tracking-tight text-slate-800">8-Weken Challenge 🏆</h2></div>
+
+                        <div className="mb-8 text-center">
+                            <h2 className="text-3xl font-black italic uppercase tracking-tight text-slate-800">8-Weken Challenge 🏆</h2>
+                            
+                            {challengeSettings.status === 'Challenge Bezig' ? (
+                                <div className="mt-5 max-w-xs mx-auto">
+                                    <div className="flex justify-between items-center mb-1.5 px-1">
+                                        <span className="text-[9px] font-black uppercase text-slate-400 tracking-wider">Voortgang</span>
+                                        <span className="text-[10px] font-black italic text-orange-600">Week {challengeSettings.week} van 8</span>
+                                    </div>
+                                    <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden shadow-inner">
+                                        <div 
+                                            className="h-full bg-gradient-to-r from-orange-400 to-[#E31E24] transition-all duration-1000 ease-out" 
+                                            style={{ width: `${Math.min(100, Math.max(0, (challengeSettings.week / 8) * 100))}%` }}
+                                        ></div>
+                                    </div>
+                                </div>
+                            ) : (
+                                <div className="mt-4 inline-flex items-center gap-2 bg-slate-100 px-4 py-1.5 rounded-full border border-slate-200">
+                                    <Clock size={14} className="text-slate-500" />
+                                    <span className="text-[10px] font-black uppercase italic text-slate-600">
+                                        Status: {challengeSettings.status}
+                                    </span>
+                                </div>
+                            )}
+                        </div>
+
+                        {challengeSettings.startDate && (
+                            <div className={`mb-6 p-5 rounded-[2rem] shadow-lg relative overflow-hidden transition-colors duration-500 ${communityStats.isFinished ? 'bg-gradient-to-br from-green-400 to-emerald-600' : 'bg-gradient-to-br from-orange-400 to-[#E31E24]'}`}>
+                                <TrendingDown className="absolute right-[-10px] bottom-[-10px] text-white/10" size={80} />
+                                <div className="relative z-10 text-white text-center">
+                                    <p className="text-[10px] font-black uppercase italic opacity-90 mb-1 drop-shadow-sm">
+                                        {communityStats.isFinished ? 'Challenge Afgerond! 🎉' : 'Community Impact 🔥'}
+                                    </p>
+                                    <p className="text-4xl font-black tracking-tighter italic mb-1 drop-shadow-md">
+                                        {communityStats.totalLost} kg
+                                    </p>
+                                    <p className="text-xs font-medium opacity-90 drop-shadow-sm">
+                                        {communityStats.isFinished ? 'Gefeliciteerd, dit hebben jullie samen behaald!' : 'Samen kwijtgeraakt deze editie!'}
+                                    </p>
+
+                                    {parseFloat(communityStats.personalLost) > 0 && (
+                                        <div className="mt-3 pt-3 border-t border-white/20">
+                                            <p className="text-[10px] font-bold italic opacity-90">
+                                                Jouw aandeel hierin is <span className="font-black text-white">{communityStats.personalLost} kg</span>! Lekker bezig! 💪
+                                            </p>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        )}
+
+                        <Card title="Tussenstand Podium" icon={Crown}>
+                            <div className="flex items-end justify-center gap-2 pt-10 pb-4 h-64">
+                                {/* ZILVER */}
+                                <div className="flex flex-col items-center flex-1">
+                                    <div className="bg-slate-50 p-2 rounded-t-xl text-center mb-1 w-full">
+                                        <p className="text-[9px] font-black uppercase text-slate-600 truncate px-1">{challengeSettings.silverName}</p>
+                                    </div>
+                                    <div className="silver-gradient w-full h-24 rounded-t-lg flex items-center justify-center shadow-lg">
+                                        <span className="text-3xl font-black italic text-white/50">2</span>
+                                    </div>
+                                </div>
+                                {/* GOUD */}
+                                <div className="flex flex-col items-center flex-1">
+                                    <Crown size={24} className="text-yellow-500 mb-2 animate-bounce" />
+                                    <div className="bg-yellow-50 p-2 rounded-t-xl text-center mb-1 w-full border border-yellow-200">
+                                        <p className="text-[10px] font-black uppercase text-yellow-700 truncate px-1">{challengeSettings.goldName}</p>
+                                    </div>
+                                    <div className="gold-gradient w-full h-36 rounded-t-lg flex items-center justify-center shadow-xl">
+                                        <span className="text-4xl font-black italic text-white/50">1</span>
+                                    </div>
+                                </div>
+                                {/* BRONS */}
+                                <div className="flex flex-col items-center flex-1">
+                                    <div className="bg-orange-50 p-2 rounded-t-xl text-center mb-1 w-full">
+                                        <p className="text-[9px] font-black uppercase text-orange-800 truncate px-1">{challengeSettings.bronzeName}</p>
+                                    </div>
+                                    <div className="bronze-gradient w-full h-16 rounded-t-lg flex items-center justify-center shadow-lg">
+                                        <span className="text-2xl font-black italic text-white/50">3</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <p className="text-center text-[9px] font-bold text-slate-400 uppercase italic mt-4">Nieuwe stand elke zondag om 20:00!</p>
+                        </Card>
+
+                        <div className="mb-6 animate-in fade-in zoom-in duration-500">
+                            <Card title="Wat kun je winnen? 💰🏆" icon={Gift}>
+                                <div className="space-y-3">
+                                    {/* Goud */}
+                                    <div className="flex items-center gap-4 bg-gradient-to-r from-yellow-50 to-white p-3 rounded-2xl border border-yellow-100 shadow-sm">
+                                        <div className="bg-yellow-100 p-2 rounded-xl border border-yellow-200 shrink-0">
+                                            <Crown size={20} className="text-yellow-600" />
+                                        </div>
+                                        <div>
+                                            <p className="text-[10px] font-black uppercase text-yellow-600 tracking-wider">1e Plaats</p>
+                                            <p className="text-sm font-bold text-slate-800 italic leading-tight mt-0.5">{challengeSettings.prize1 || 'Wordt nog bekendgemaakt'}</p>
+                                        </div>
+                                    </div>
+                                    {/* Zilver */}
+                                    <div className="flex items-center gap-4 bg-gradient-to-r from-slate-50 to-white p-3 rounded-2xl border border-slate-200 shadow-sm">
+                                        <div className="bg-slate-200 p-2 rounded-xl border border-slate-300 shrink-0">
+                                            <Medal size={20} className="text-slate-500" />
+                                        </div>
+                                        <div>
+                                            <p className="text-[10px] font-black uppercase text-slate-500 tracking-wider">2e Plaats</p>
+                                            <p className="text-sm font-bold text-slate-800 italic leading-tight mt-0.5">{challengeSettings.prize2 || 'Wordt nog bekendgemaakt'}</p>
+                                        </div>
+                                    </div>
+                                    {/* Brons */}
+                                    <div className="flex items-center gap-4 bg-gradient-to-r from-orange-50 to-white p-3 rounded-2xl border border-orange-100 shadow-sm">
+                                        <div className="bg-orange-100 p-2 rounded-xl border border-orange-200 shrink-0">
+                                            <Medal size={20} className="text-orange-600" />
+                                        </div>
+                                        <div>
+                                            <p className="text-[10px] font-black uppercase text-orange-600 tracking-wider">3e Plaats</p>
+                                            <p className="text-sm font-bold text-slate-800 italic leading-tight mt-0.5">{challengeSettings.prize3 || 'Wordt nog bekendgemaakt'}</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </Card>
+                        </div>
+
+                        {/* PROTOCOL */}
+                        <div className="mb-6">
+                            <button 
+                                onClick={() => window.open(challengeSettings.protocolUrl || '#')}
+                                className="w-full bg-slate-900 text-white p-5 rounded-[2rem] flex items-center justify-between shadow-xl group active:scale-95 transition-all"
+                            >
+                                <div className="flex items-center gap-4">
+                                    <div className="bg-white/10 p-3 rounded-2xl"><FileText size={20} className="text-orange-400"/></div>
+                                    <div className="text-left">
+                                        <p className="text-[9px] font-black uppercase italic text-orange-400">Download nu</p>
+                                        <p className="text-sm font-black italic uppercase">Het 8-Weken Protocol</p>
+                                    </div>
+                                </div>
+                                <ChevronRight className="group-hover:translate-x-1 transition-transform" />
+                            </button>
+                        </div>
+
+                        {/* HALL OF FAME MET SWIPE-CARROUSEL */}
+                        <div className="mt-10 mb-6">
+                            <div className="flex items-center gap-2 mb-6 ml-2">
+                                <Star className="text-yellow-500" size={24} />
+                                <h3 className="text-xl font-black italic uppercase tracking-tight text-slate-800">Hall of Fame</h3>
+                            </div>
+                            
+                            {(challengeSettings.winners && challengeSettings.winners.length > 0) ? (
+                                <div className="flex overflow-x-auto gap-4 pb-4 hide-scrollbar snap-x snap-mandatory px-2 -mx-2">
+                                    {challengeSettings.winners.map(w => (
+                                        <div key={w.id} className="flex-none w-[160px] snap-start bg-white rounded-[1.5rem] p-2 shadow-md border border-slate-100 relative group flex flex-col h-[240px]">
+                                            {/* Gouden lijntje bovenaan */}
+                                            <div className="absolute top-0 left-0 w-full h-1.5 gold-gradient rounded-t-[1.5rem]"></div>
+                                            
+                                            {/* Afbeelding met de 3D trofee */}
+                                            <div className="relative mt-1">
+                                                <div className="w-full aspect-square rounded-t-2xl overflow-hidden shadow-inner bg-slate-50">
+                                                    <img src={w.photoBase64} alt={w.name} className="w-full h-full object-cover" />
+                                                </div>
+                                                <div className="absolute -bottom-4 left-1/2 -translate-x-1/2 bg-white rounded-full p-1.5 shadow-md z-10">
+                                                    <div className="bg-gradient-to-br from-yellow-100 to-orange-100 rounded-full p-1.5 border border-white">
+                                                        <Trophy size={16} className="text-orange-500" />
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            {/* Oranje tekst vlak onderaan */}
+                                            <div className="bg-gradient-to-br from-orange-400 to-[#E31E24] rounded-b-2xl pt-6 pb-3 px-2 text-center flex-1 flex flex-col justify-center shadow-inner mt-[-2px]">
+                                                <p className="text-xs font-black italic uppercase text-white drop-shadow-md truncate px-1">{w.name}</p>
+                                                <p className="text-[7px] font-black uppercase text-orange-100 mt-1 leading-tight tracking-[0.1em] opacity-90 line-clamp-2">{w.type}</p>
+                                                <p className="text-[10px] font-black text-yellow-300 italic mt-auto drop-shadow-md">{w.year}</p>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            ) : (
+                                <div className="bg-white rounded-[2rem] p-8 text-center border border-slate-100 shadow-sm">
+                                    <Trophy size={40} className="mx-auto text-slate-200 mb-4" />
+                                    <p className="text-[10px] font-black uppercase text-slate-400 italic">De Hall of Fame wacht op zijn eerste kampioen...</p>
+                                </div>
+                            )}
+                        </div>
+
+                        {/* JOUW CHALLENGE REPORT (MARKETING/EGO KNOP) */}
                         <div className="mb-6 animate-in fade-in zoom-in duration-500 delay-150">
                             <Card title="Jouw Challenge Report 🏆" icon={Share2}>
-                                <p className="text-[11px] font-bold text-slate-500 mb-4 leading-relaxed">Je mag bizar trots zijn op wat je deze challenge al bereikt hebt. Genereer jouw persoonlijke rapportcijfer en bekijk je statistieken.</p>
-                                <button onClick={() => setShowShareModal(true)} className="w-full py-4 bg-slate-900 text-white rounded-[2rem] font-black italic uppercase shadow-xl flex items-center justify-center gap-3 active:scale-[0.98] transition-transform"><Camera size={18} /> Bekijk mijn Report Card</button>
+                                <p className="text-[11px] font-bold text-slate-500 mb-4 leading-relaxed">
+                                    Je mag bizar trots zijn op wat je deze challenge al bereikt hebt. Genereer jouw persoonlijke rapportcijfer en bekijk je statistieken.
+                                </p>
+                                <button 
+                                    onClick={() => setShowShareModal(true)}
+                                    className="w-full py-4 bg-slate-900 text-white rounded-[2rem] font-black italic uppercase shadow-xl flex items-center justify-center gap-3 active:scale-[0.98] transition-transform"
+                                >
+                                    <Camera size={18} /> Bekijk mijn Report Card
+                                </button>
                             </Card>
                         </div>
                     </>
@@ -1317,33 +1602,156 @@ const App = () => {
             </div>
           ) : clientTab === 'webshop' ? (
              <div className="animate-in fade-in slide-in-from-right-4 duration-500 pb-10">
-                <div className="mb-8 text-center"><h2 className="text-2xl font-black italic uppercase tracking-tight text-slate-800">For-Effect Shop 🛒</h2><p className="text-[10px] font-bold text-red-600 uppercase italic mt-1">Exclusief voor actieve cliënten</p></div>
+                <div className="mb-8 text-center">
+                    <h2 className="text-2xl font-black italic uppercase tracking-tight text-slate-800">For-Effect Shop 🛒</h2>
+                    <p className="text-[10px] font-bold text-red-600 uppercase italic mt-1">Exclusief voor actieve cliënten</p>
+                </div>
+
+                {clientData.daysLeft !== null && clientData.daysLeft <= 14 && clientData.daysLeft >= 0 && (
+                    <div className="bg-red-50 border border-red-200 rounded-[2rem] p-5 mb-6 text-center shadow-sm">
+                        <Timer className="text-red-500 mx-auto mb-2" size={28} />
+                        <p className="text-sm font-black italic text-slate-800 uppercase mb-1">Nog {clientData.daysLeft} dagen tot einde traject!</p>
+                        <p className="text-[10px] font-bold text-slate-500 uppercase">Verleng direct via de onderstaande knoppen.</p>
+                    </div>
+                )}
+
                 <Card title="Jouw VIP Voordelen" icon={Gift}>
-                    <p className="text-[11px] font-bold text-slate-500 mb-4 leading-relaxed">Als actieve For-Effect cliënt krijg je altijd voorrang op nieuwe drops en behoud je korting bij verlengingen.</p>
-                    <div className="bg-slate-900 text-white rounded-2xl p-4 flex justify-between items-center border border-slate-800"><div><p className="text-[9px] font-black uppercase italic text-slate-400">Jouw Kortingscode</p><p className="text-lg font-black tracking-widest uppercase">FOREFFECT10</p></div><Tag className="text-red-500" size={24} /></div>
+                    <p className="text-[11px] font-bold text-slate-500 mb-4 leading-relaxed">
+                        Als actieve For-Effect cliënt krijg je altijd voorrang op nieuwe drops en behoud je korting bij verlengingen.
+                    </p>
+                    <div className="bg-slate-900 text-white rounded-2xl p-4 flex justify-between items-center border border-slate-800">
+                        <div>
+                            <p className="text-[9px] font-black uppercase italic text-slate-400">Jouw Kortingscode</p>
+                            <p className="text-lg font-black tracking-widest uppercase">FOREFFECT10</p>
+                        </div>
+                        <Tag className="text-red-500" size={24} />
+                    </div>
                 </Card>
-                <div className="space-y-4 mt-6"><button onClick={() => window.open(clientData.webshopUrl || 'https://www.google.com/search?q=for-effect+shop')} className="w-full py-5 bg-green-600 text-white rounded-[2rem] font-black italic uppercase shadow-xl flex items-center justify-center gap-3 active:scale-[0.98] transition-transform"><ShoppingCart size={18} /> Verleng jouw progressie</button></div>
+
+                <div className="space-y-4 mt-6">
+                    <button onClick={() => window.open(clientData.webshopUrl || 'https://www.google.com/search?q=for-effect+shop')} className="w-full py-5 bg-green-600 text-white rounded-[2rem] font-black italic uppercase shadow-xl flex items-center justify-center gap-3 active:scale-[0.98] transition-transform">
+                        <ShoppingCart size={18} /> Verleng jouw progressie
+                    </button>
+                    
+                    <div className="pt-2">
+                        <button onClick={() => window.open(clientData.extraToolsUrl || 'https://www.google.com/search?q=for-effect+tools')} className="w-full py-4 bg-slate-100 text-slate-600 rounded-[2rem] font-black italic uppercase flex items-center justify-center gap-3 hover:bg-slate-200 active:scale-[0.98] transition-all">
+                            <Tag size={18} /> Bekijk onze extra tools
+                        </button>
+                    </div>
+                </div>
             </div>
           ) : (
             <div className="animate-in fade-in slide-in-from-right-4 duration-500">
                 <h2 className="text-3xl font-black italic uppercase text-center mb-10 tracking-tight text-slate-800">Check-in</h2>
-                <Card title="Basis" icon={Users}><div className="grid grid-cols-1 md:grid-cols-2 gap-4"><FormInput name="clientName" value={formData.clientName} readOnly className="opacity-50" /><FormInput type="date" name="date" value={formData.date} onChange={handleChange} /></div></Card>
-                <Card title="Metingen" icon={TrendingDown}><div className="grid grid-cols-2 gap-4"><FormInput label="Gewicht (kg)" type="number" name="weight" placeholder="00.0" value={formData.weight} onChange={handleChange} /><FormInput label="Slaap (u)" type="number" name="sleepHours" value={formData.sleepHours} onChange={handleChange} /></div></Card>
-                <Card title="Mentale Staat" icon={Smile}><SliderField label="Motivatie" name="motivation" value={formData.motivation} onChange={handleChange} /><SliderField label="Energie" name="energy" value={formData.energy} onChange={handleChange} /><SliderField label="Stress" name="mentalStress" value={formData.mentalStress} onChange={handleChange} /></Card>
-                <Card title="Herstel & Gezondheid" icon={Stethoscope}><FormInput name="illnessSigns" placeholder="Ziekteverschijnselen?" value={formData.illnessSigns} onChange={handleChange} /><FormInput name="musclePain" placeholder="Waar heb je spierpijn?" value={formData.musclePain} onChange={handleChange} /></Card>
-                <Card title="Hydratatie & Cyclus" icon={Droplets}><SliderField label="Waterinname" name="waterLiters" value={formData.waterLiters} min="0" max="6" step="0.5" unit=" L" onChange={handleChange} /><div className="grid grid-cols-2 gap-4"><FormInput label="Eiwitten (g)" type="number" name="proteinGrams" placeholder="Bijv. 160" value={formData.proteinGrams} onChange={handleChange} /><div className="flex flex-col"><label className="text-[10px] font-bold text-slate-400 uppercase mb-1 ml-1">Cyclus</label><select name="cyclePhase" value={formData.cyclePhase} onChange={handleChange} className="bg-gray-50 rounded-2xl p-4 text-sm font-bold outline-none border-none shadow-sm h-[52px]"><option>N.v.t.</option><option>Week 1</option><option>Week 2</option><option>Week 3</option><option>Week 4 (PMS)</option><option>Menstruatie</option></select></div></div></Card>
-                <Card title="Voeding & Spijsvertering" icon={Apple}><SliderField label="Honger" name="hunger" value={formData.hunger} onChange={handleChange} /><FormInput name="cravings" placeholder="Cravings vandaag?" value={formData.cravings} onChange={handleChange} /><div className="grid grid-cols-2 gap-4 mb-2"><FormInput label="Stoelgang (#)" type="number" name="bowelFrequency" value={formData.bowelFrequency} onChange={handleChange} /><div className="flex flex-col"><label className="text-[10px] font-bold text-slate-400 uppercase mb-1 ml-1">Kwaliteit</label><select name="bowelQuality" value={formData.bowelQuality} onChange={handleChange} className="bg-gray-50 rounded-2xl p-4 text-sm font-bold outline-none border-none shadow-sm h-[52px]"><option>Normaal</option><option>Hard</option><option>Dun</option></select></div></div><FormInput name="bloating" placeholder="Opgeblazen gevoel?" value={formData.bloating} onChange={handleChange} /></Card>
-                <Card title="Training" icon={Dumbbell}><label className="flex items-center gap-3 p-4 bg-gray-50 rounded-2xl cursor-pointer mb-6 shadow-sm"><input type="checkbox" name="trainingDay" checked={formData.trainingDay} onChange={handleChange} className="w-5 h-5 rounded text-red-600" /><span className="font-black italic uppercase text-xs">Vandaag getraind</span></label><div className="grid grid-cols-2 gap-4 mb-4"><FormInput label="Duur (min)" type="number" name="trainingDuration" placeholder="0" value={formData.trainingDuration} onChange={handleChange} /><div className="flex flex-col"><label className="text-[10px] font-bold text-slate-400 uppercase mb-1 ml-1">Zwaarte (RPE)</label><select name="trainingRpe" value={formData.trainingRpe} onChange={handleChange} className="bg-gray-50 rounded-2xl p-4 text-sm font-bold outline-none border-none shadow-sm h-[52px]"><option value="5">5 - Gemiddeld</option><option value="6">6 - Pittig</option><option value="7">7 - Zwaar</option><option value="8">8 - Zeer Zwaar</option><option value="9">9 - Maximaal</option><option value="10">10 - Tot Falen</option></select></div></div><div className="grid grid-cols-2 gap-4 mb-4"><FormInput label="Stappen" type="number" name="steps" placeholder="0" value={formData.steps} onChange={handleChange} /><FormInput label="Calorieën" type="number" name="calories" placeholder="0" value={formData.calories} onChange={handleChange} /></div><textarea name="trainingDetails" placeholder="Details?" value={formData.trainingDetails} onChange={handleChange} className="w-full bg-gray-50 border-none rounded-2xl p-5 text-sm font-bold outline-none shadow-sm min-h-[80px]" /></Card>
-                <Card title="Leefstijl & Mindset" icon={Brain}><FormInput icon={Smartphone} label="Schermtijd (u)" type="number" name="screenTime" placeholder="Bijv. 4" value={formData.screenTime} onChange={handleChange} /><SliderField label="Cijfer voor je dag" name="dailyRating" value={formData.dailyRating} onChange={handleChange} /><FormInput name="gratefulFor" placeholder="Dankbaar voor?" value={formData.gratefulFor} onChange={handleChange} /><FormInput name="biggestChallenge" placeholder="Grootste uitdaging?" value={formData.biggestChallenge} onChange={handleChange} /></Card>
-                <Card title="Reflectie & Foto" icon={Target}><FormInput icon={Trophy} name="biggestWin" placeholder="Grootste winst?" value={formData.biggestWin} onChange={handleChange} /><label className="flex items-center gap-3 p-4 bg-gray-50 rounded-2xl cursor-pointer mb-6 shadow-sm"><input type="checkbox" name="supplements" checked={formData.supplements} onChange={handleChange} className="w-5 h-5 rounded text-red-600" /><span className="font-black italic uppercase text-xs">Supplementen genomen</span></label><div className="bg-red-50 p-6 rounded-2xl border border-red-100 flex flex-col items-center justify-center relative overflow-hidden min-h-[100px]">{formData.photoBase64 ? (<div className="flex flex-col items-center gap-2"><Check size={32} className="text-green-500" /><span className="text-[10px] font-black uppercase italic text-green-700">Foto toegevoegd</span><button onClick={() => setFormData(prev => ({...prev, photoBase64: ''}))} className="text-[9px] text-red-500 underline">Verwijder</button></div>) : (<><Camera size={24} className="text-red-600 mb-2" /><span className="text-[10px] font-black uppercase italic text-red-600">Upload progressiefoto</span><input type="file" accept="image/*" onChange={handleImageUpload} className="absolute inset-0 opacity-0 cursor-pointer w-full h-full" /></>)}</div></Card>
-                <div className="mt-8 pb-10"><button onClick={handleSubmit} disabled={isSubmitting} style={{ backgroundColor: BRAND_RED }} className="w-full py-5 text-white rounded-3xl font-black italic uppercase shadow-xl flex items-center justify-center gap-3 active:scale-[0.98] transition-transform"><Activity size={18} /> {isSubmitting ? "Bezig..." : "Update Dashboard"}</button></div>
+                <Card title="Basis" icon={Users}>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <FormInput name="clientName" value={formData.clientName} readOnly className="opacity-50" />
+                        <FormInput type="date" name="date" value={formData.date} onChange={handleChange} />
+                    </div>
+                </Card>
+                <Card title="Metingen" icon={TrendingDown}>
+                    <div className="grid grid-cols-2 gap-4">
+                        <FormInput label="Gewicht (kg)" type="number" name="weight" placeholder="00.0" value={formData.weight} onChange={handleChange} />
+                        <FormInput label="Slaap (u)" type="number" name="sleepHours" value={formData.sleepHours} onChange={handleChange} />
+                    </div>
+                </Card>
+                <Card title="Mentale Staat" icon={Smile}>
+                    <SliderField label="Motivatie" name="motivation" value={formData.motivation} onChange={handleChange} />
+                    <SliderField label="Energie" name="energy" value={formData.energy} onChange={handleChange} />
+                    <SliderField label="Stress" name="mentalStress" value={formData.mentalStress} onChange={handleChange} />
+                </Card>
+                <Card title="Herstel & Gezondheid" icon={Stethoscope}>
+                    <FormInput name="illnessSigns" placeholder="Ziekteverschijnselen?" value={formData.illnessSigns} onChange={handleChange} />
+                    <FormInput name="musclePain" placeholder="Waar heb je spierpijn?" value={formData.musclePain} onChange={handleChange} />
+                </Card>
+                <Card title="Hydratatie & Cyclus" icon={Droplets}>
+                    <SliderField label="Waterinname" name="waterLiters" value={formData.waterLiters} min="0" max="6" step="0.5" unit=" L" onChange={handleChange} />
+                    <div className="grid grid-cols-2 gap-4">
+                        <FormInput label="Eiwitten (g)" type="number" name="proteinGrams" placeholder="Bijv. 160" value={formData.proteinGrams} onChange={handleChange} />
+                        <div className="flex flex-col">
+                            <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 ml-1">Cyclus</label>
+                            <select name="cyclePhase" value={formData.cyclePhase} onChange={handleChange} className="bg-gray-50 rounded-2xl p-4 text-sm font-bold outline-none border-none shadow-sm h-[52px]">
+                                <option>N.v.t.</option><option>Week 1</option><option>Week 2</option><option>Week 3</option><option>Week 4 (PMS)</option><option>Menstruatie</option>
+                            </select>
+                        </div>
+                    </div>
+                </Card>
+                <Card title="Voeding & Spijsvertering" icon={Apple}>
+                    <SliderField label="Honger" name="hunger" value={formData.hunger} onChange={handleChange} />
+                    <FormInput name="cravings" placeholder="Cravings vandaag?" value={formData.cravings} onChange={handleChange} />
+                    <div className="grid grid-cols-2 gap-4 mb-2">
+                        <FormInput label="Stoelgang (#)" type="number" name="bowelFrequency" value={formData.bowelFrequency} onChange={handleChange} />
+                        <div className="flex flex-col">
+                            <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 ml-1">Kwaliteit</label>
+                            <select name="bowelQuality" value={formData.bowelQuality} onChange={handleChange} className="bg-gray-50 rounded-2xl p-4 text-sm font-bold outline-none border-none shadow-sm h-[52px]">
+                                <option>Normaal</option><option>Hard</option><option>Dun</option>
+                            </select>
+                        </div>
+                    </div>
+                    <FormInput name="bloating" placeholder="Opgeblazen gevoel?" value={formData.bloating} onChange={handleChange} />
+                </Card>
+                <Card title="Training" icon={Dumbbell}>
+                    <label className="flex items-center gap-3 p-4 bg-gray-50 rounded-2xl cursor-pointer mb-6 shadow-sm">
+                        <input type="checkbox" name="trainingDay" checked={formData.trainingDay} onChange={handleChange} className="w-5 h-5 rounded text-red-600" />
+                        <span className="font-black italic uppercase text-xs">Vandaag getraind</span>
+                    </label>
+                    <div className="grid grid-cols-2 gap-4 mb-4">
+                        <FormInput label="Duur (min)" type="number" name="trainingDuration" placeholder="0" value={formData.trainingDuration} onChange={handleChange} />
+                        <div className="flex flex-col">
+                            <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 ml-1">Zwaarte (RPE)</label>
+                            <select name="trainingRpe" value={formData.trainingRpe} onChange={handleChange} className="bg-gray-50 rounded-2xl p-4 text-sm font-bold outline-none border-none shadow-sm h-[52px]">
+                                <option value="5">5 - Gemiddeld</option><option value="6">6 - Pittig</option><option value="7">7 - Zwaar</option><option value="8">8 - Zeer Zwaar</option><option value="9">9 - Maximaal</option><option value="10">10 - Tot Falen</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4 mb-4">
+                        <FormInput label="Stappen" type="number" name="steps" placeholder="0" value={formData.steps} onChange={handleChange} />
+                        <FormInput label="Calorieën" type="number" name="calories" placeholder="0" value={formData.calories} onChange={handleChange} />
+                    </div>
+                    <textarea name="trainingDetails" placeholder="Details?" value={formData.trainingDetails} onChange={handleChange} className="w-full bg-gray-50 border-none rounded-2xl p-5 text-sm font-bold outline-none shadow-sm min-h-[80px]" />
+                </Card>
+                <Card title="Leefstijl & Mindset" icon={Brain}>
+                    <FormInput icon={Smartphone} label="Schermtijd (u)" type="number" name="screenTime" placeholder="Bijv. 4" value={formData.screenTime} onChange={handleChange} />
+                    <SliderField label="Cijfer voor je dag" name="dailyRating" value={formData.dailyRating} onChange={handleChange} />
+                    <FormInput name="gratefulFor" placeholder="Dankbaar voor?" value={formData.gratefulFor} onChange={handleChange} />
+                    <FormInput name="biggestChallenge" placeholder="Grootste uitdaging?" value={formData.biggestChallenge} onChange={handleChange} />
+                </Card>
+                <Card title="Reflectie & Foto" icon={Target}>
+                    <FormInput icon={Trophy} name="biggestWin" placeholder="Grootste winst?" value={formData.biggestWin} onChange={handleChange} />
+                    <label className="flex items-center gap-3 p-4 bg-gray-50 rounded-2xl cursor-pointer mb-6 shadow-sm">
+                        <input type="checkbox" name="supplements" checked={formData.supplements} onChange={handleChange} className="w-5 h-5 rounded text-red-600" />
+                        <span className="font-black italic uppercase text-xs">Supplementen genomen</span>
+                    </label>
+                    <div className="bg-red-50 p-6 rounded-2xl border border-red-100 flex flex-col items-center justify-center relative overflow-hidden min-h-[100px]">
+                        {formData.photoBase64 ? (
+                            <div className="flex flex-col items-center gap-2">
+                                <Check size={32} className="text-green-500" />
+                                <span className="text-[10px] font-black uppercase italic text-green-700">Foto toegevoegd</span>
+                                <button onClick={() => setFormData(prev => ({...prev, photoBase64: ''}))} className="text-[9px] text-red-500 underline">Verwijder</button>
+                            </div>
+                        ) : (
+                            <>
+                                <Camera size={24} className="text-red-600 mb-2" />
+                                <span className="text-[10px] font-black uppercase italic text-red-600">Upload progressiefoto</span>
+                                <input type="file" accept="image/*" onChange={handleImageUpload} className="absolute inset-0 opacity-0 cursor-pointer w-full h-full" />
+                            </>
+                        )}
+                    </div>
+                </Card>
+                <div className="mt-8 pb-10">
+                  <button onClick={handleSubmit} disabled={isSubmitting} style={{ backgroundColor: BRAND_RED }} className="w-full py-5 text-white rounded-3xl font-black italic uppercase shadow-xl flex items-center justify-center gap-3 active:scale-[0.98] transition-transform">
+                    <Activity size={18} /> {isSubmitting ? "Bezig..." : "Update Dashboard"}
+                  </button>
+                </div>
             </div>
           )
         ) : (
           <div className="py-24 text-center">
             <div className="w-24 h-24 bg-green-50 text-green-500 rounded-full flex items-center justify-center mx-auto mb-8 animate-bounce"><CheckCircle2 size={48} /></div>
             <h2 className="text-4xl font-black italic uppercase mb-10">Ontvangen!</h2>
-            <button onClick={() => { setStep('form'); setClientTab('dashboard'); }} style={{ backgroundColor: BRAND_RED }} className="px-12 py-5 text-white rounded-full font-black italic uppercase mx-auto flex items-center gap-3"><ChevronRight size={18}/> Naar Dashboard</button>
+            <button onClick={() => { setStep('form'); setClientTab('dashboard'); }} style={{ backgroundColor: BRAND_RED }} className="px-12 py-5 text-white rounded-full font-black italic uppercase mx-auto flex items-center gap-3">
+              <ChevronRight size={18}/> Naar Dashboard
+            </button>
           </div>
         )}
       </div>
