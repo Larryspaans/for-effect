@@ -188,6 +188,7 @@ const App = () => {
   const [step, setStep] = useState('form');
   const [submissions, setSubmissions] = useState([]);
   const [clients, setClients] = useState([]);
+  const [expandedClientId, setExpandedClientId] = useState(null); // NIEUW: Accordion state
   
   const [challengeSettings, setChallengeSettings] = useState({
       status: 'Gesloten',
@@ -255,15 +256,18 @@ const App = () => {
         .sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
       setSubmissions(data);
     });
+    
+    // NIEUW: Klanten automatisch sorteren zodat de nieuwste altijd bovenaan staan
     const unsubCli = onSnapshot(collection(db, 'clients'), (snapshot) => {
-      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))
+        .sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
       setClients(data);
     });
+    
     const unsubChal = onSnapshot(doc(db, 'settings', 'challenge'), (doc) => {
         if (doc.exists()) setChallengeSettings(doc.data());
     });
     
-    // Auto-clean 24 uur in Chat logic
     const qChat = query(collection(db, 'challenge_messages'), orderBy('createdAt', 'desc'), limit(100));
     const unsubChat = onSnapshot(qChat, (snapshot) => {
         const now = Date.now();
@@ -352,7 +356,6 @@ const App = () => {
       }
   };
 
-  // NIEUW: Veilige inlog-logica met 3x fout = blokkade
   const handleClientLogin = (e) => {
     e.preventDefault();
     const safeName = loginName.trim().toLowerCase();
@@ -360,7 +363,6 @@ const App = () => {
     const lockoutKey = 'fe_lockout_' + safeName;
     const attemptsKey = 'fe_attempts_' + safeName;
 
-    // Check of de gebruiker momenteel is geblokkeerd
     const lockoutTime = localStorage.getItem(lockoutKey);
     if (lockoutTime && now < parseInt(lockoutTime)) {
         const minutesLeft = Math.ceil((parseInt(lockoutTime) - now) / 60000);
@@ -374,7 +376,6 @@ const App = () => {
     );
     
     if (client) {
-      // Bij succes: reset alle veiligheids-counters
       localStorage.removeItem(lockoutKey);
       localStorage.removeItem(attemptsKey);
       
@@ -383,10 +384,8 @@ const App = () => {
       setView('client');
       setLoginError('');
     } else {
-      // Bij fout: tel pogingen op
       let attempts = parseInt(localStorage.getItem(attemptsKey) || '0') + 1;
       if (attempts >= 3) {
-          // 3x fout? 15 minuten (15 * 60 * 1000 ms) blokkade instellen
           localStorage.setItem(lockoutKey, (now + 15 * 60 * 1000).toString());
           localStorage.removeItem(attemptsKey);
           setLoginError('Te veel mislukte pogingen. Account 15 minuten geblokkeerd.');
@@ -866,127 +865,144 @@ const App = () => {
                 </Card>
                 <div className="space-y-3">
                     <h3 className="text-[10px] font-black uppercase text-slate-400 ml-2 italic">Huidige Klanten ({clients.length})</h3>
-                    {clients.map(c => (
-                        <div key={c.id} className="bg-white p-4 rounded-2xl flex flex-col gap-4 shadow-sm border border-slate-100">
-                            <div className="flex justify-between items-center">
-                                <div>
-                                    <p className="font-black italic text-sm text-slate-800 uppercase tracking-tight">{c.name}</p>
-                                    <p className="text-[10px] font-bold text-red-500 uppercase tracking-widest">Code: {c.code}</p>
+                    {/* ACCORDION LOOP */}
+                    {clients.map((c, idx) => (
+                        <div key={c.id} className="bg-white p-4 rounded-2xl flex flex-col shadow-sm border border-slate-100 transition-all">
+                            {/* Standaard zichtbare header balk */}
+                            <div 
+                                className="flex justify-between items-center cursor-pointer"
+                                onClick={() => setExpandedClientId(expandedClientId === c.id ? null : c.id)}
+                            >
+                                <div className="flex items-center gap-3">
+                                    <div className={`p-2 rounded-xl transition-colors ${expandedClientId === c.id ? 'bg-red-50 text-red-600' : 'bg-slate-50 text-slate-400'}`}>
+                                        <ChevronRight size={16} className={`transition-transform duration-300 ${expandedClientId === c.id ? 'rotate-90' : ''}`} />
+                                    </div>
+                                    <div>
+                                        <div className="flex items-center gap-2">
+                                            <p className="font-black italic text-sm text-slate-800 uppercase tracking-tight">{c.name}</p>
+                                            {idx < 3 && <span className="bg-green-100 text-green-700 text-[8px] px-1.5 py-0.5 rounded uppercase font-black tracking-wider">Nieuw</span>}
+                                        </div>
+                                        <p className="text-[10px] font-bold text-red-500 uppercase tracking-widest">Code: {c.code}</p>
+                                    </div>
                                 </div>
-                                <div className="flex items-center gap-2">
+                                <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
                                     <label className="flex items-center gap-2 bg-orange-50 px-2 py-1 rounded-lg cursor-pointer">
                                         <input type="checkbox" checked={c.isChallengeParticipant} onChange={(e) => updateClientField(c.id, 'isChallengeParticipant', e.target.checked)} className="w-3 h-3 accent-orange-500" />
                                         <span className="text-[8px] font-black uppercase text-orange-600">Challenge</span>
                                     </label>
-                                    <button onClick={() => deleteClient(c.id)} className="p-2 text-slate-300 hover:text-red-500"><Trash2 size={18}/></button>
+                                    <button onClick={() => deleteClient(c.id)} className="p-2 text-slate-300 hover:text-red-500 transition-colors"><Trash2 size={18}/></button>
                                 </div>
                             </div>
-                            <div className="grid grid-cols-1 gap-2">
-                                <FormInput 
-                                    placeholder="Persoonlijk Doel (voor SOS)" 
-                                    value={c.personalGoal || ''} 
-                                    onChange={(e) => updateClientField(c.id, 'personalGoal', e.target.value)} 
-                                    className="text-[10px] !mb-0"
-                                />
-                                
-                                <div className="grid grid-cols-1 gap-2 mt-2 border-t pt-2 border-slate-50">
-                                    <p className="text-[9px] font-black uppercase italic text-slate-400">Doelstellingen:</p>
-                                    <div className="flex gap-2">
-                                        <input type="number" defaultValue={c.targetWeight} placeholder="Streefgewicht (kg)" className="flex-1 bg-gray-50 border-none rounded-xl p-3 text-[10px] font-bold outline-none" onBlur={(e) => updateClientField(c.id, 'targetWeight', e.target.value)} />
-                                        <div className="bg-slate-100 p-3 rounded-xl text-red-500"><Target size={14}/></div>
-                                    </div>
-                                    <div className="flex gap-2">
-                                        <input type="text" defaultValue={c.subGoal1} placeholder="Subdoel 1" className="flex-1 bg-gray-50 border-none rounded-xl p-3 text-[10px] font-bold outline-none" onBlur={(e) => updateClientField(c.id, 'subGoal1', e.target.value)} />
-                                        <div className="bg-slate-100 p-3 rounded-xl text-orange-500"><Star size={14}/></div>
-                                    </div>
-                                    <div className="flex gap-2">
-                                        <input type="text" defaultValue={c.subGoal2} placeholder="Subdoel 2" className="flex-1 bg-gray-50 border-none rounded-xl p-3 text-[10px] font-bold outline-none" onBlur={(e) => updateClientField(c.id, 'subGoal2', e.target.value)} />
-                                        <div className="bg-slate-100 p-3 rounded-xl text-orange-500"><Star size={14}/></div>
-                                    </div>
-                                </div>
 
-                                <div className="grid grid-cols-1 gap-2 mt-2 border-t pt-2 border-slate-50">
-                                    <p className="text-[9px] font-black uppercase italic text-slate-400">Trainingsschema's:</p>
-                                    <div className="flex gap-2">
-                                        <input 
-                                            type="text" 
-                                            defaultValue={c.schemaUrl} 
-                                            placeholder="PDF Link (Schema 1)" 
-                                            className="flex-1 bg-gray-50 border-none rounded-xl p-3 text-[10px] font-bold outline-none"
-                                            onBlur={(e) => updateClientField(c.id, 'schemaUrl', e.target.value)}
-                                        />
-                                        <div className="bg-slate-100 p-3 rounded-xl text-slate-400"><FileText size={14}/></div>
-                                    </div>
-                                    <div className="flex gap-2">
-                                        <input 
-                                            type="text" 
-                                            defaultValue={c.schemaUrl2} 
-                                            placeholder="PDF Link (Schema 2)" 
-                                            className="flex-1 bg-gray-50 border-none rounded-xl p-3 text-[10px] font-bold outline-none"
-                                            onBlur={(e) => updateClientField(c.id, 'schemaUrl2', e.target.value)}
-                                        />
-                                        <div className="bg-slate-100 p-3 rounded-xl text-slate-400"><FileText size={14}/></div>
-                                    </div>
-                                </div>
-
-                                <div className="flex gap-2">
-                                    <input 
-                                        type="text" 
-                                        defaultValue={c.weeklyChallenge} 
-                                        placeholder="Wekelijkse Challenge (Focus tekst)" 
-                                        className="flex-1 bg-gray-50 border-none rounded-xl p-3 text-[10px] font-bold outline-none"
-                                        onBlur={(e) => updateClientField(c.id, 'weeklyChallenge', e.target.value)}
+                            {/* Verborgen detail velden (klapt open) */}
+                            {expandedClientId === c.id && (
+                                <div className="grid grid-cols-1 gap-2 mt-4 pt-4 border-t border-slate-50 animate-in fade-in duration-300">
+                                    <FormInput 
+                                        placeholder="Persoonlijk Doel (voor SOS)" 
+                                        value={c.personalGoal || ''} 
+                                        onChange={(e) => updateClientField(c.id, 'personalGoal', e.target.value)} 
+                                        className="text-[10px] !mb-0"
                                     />
-                                    <div className="bg-slate-100 p-3 rounded-xl text-blue-500"><Zap size={14}/></div>
-                                </div>
-                                <div className="grid grid-cols-1 gap-2 mt-2 border-t pt-2 border-slate-50">
-                                    <p className="text-[9px] font-black uppercase italic text-slate-400">Opdrachten om af te vinken:</p>
-                                    {[1, 2, 3].map(i => (
-                                        <div key={i} className="flex gap-2">
+                                    
+                                    <div className="grid grid-cols-1 gap-2 mt-2 border-t pt-2 border-slate-50">
+                                        <p className="text-[9px] font-black uppercase italic text-slate-400">Doelstellingen:</p>
+                                        <div className="flex gap-2">
+                                            <input type="number" defaultValue={c.targetWeight} placeholder="Streefgewicht (kg)" className="flex-1 bg-gray-50 border-none rounded-xl p-3 text-[10px] font-bold outline-none" onBlur={(e) => updateClientField(c.id, 'targetWeight', e.target.value)} />
+                                            <div className="bg-slate-100 p-3 rounded-xl text-red-500"><Target size={14}/></div>
+                                        </div>
+                                        <div className="flex gap-2">
+                                            <input type="text" defaultValue={c.subGoal1} placeholder="Subdoel 1" className="flex-1 bg-gray-50 border-none rounded-xl p-3 text-[10px] font-bold outline-none" onBlur={(e) => updateClientField(c.id, 'subGoal1', e.target.value)} />
+                                            <div className="bg-slate-100 p-3 rounded-xl text-orange-500"><Star size={14}/></div>
+                                        </div>
+                                        <div className="flex gap-2">
+                                            <input type="text" defaultValue={c.subGoal2} placeholder="Subdoel 2" className="flex-1 bg-gray-50 border-none rounded-xl p-3 text-[10px] font-bold outline-none" onBlur={(e) => updateClientField(c.id, 'subGoal2', e.target.value)} />
+                                            <div className="bg-slate-100 p-3 rounded-xl text-orange-500"><Star size={14}/></div>
+                                        </div>
+                                    </div>
+
+                                    <div className="grid grid-cols-1 gap-2 mt-2 border-t pt-2 border-slate-50">
+                                        <p className="text-[9px] font-black uppercase italic text-slate-400">Trainingsschema's:</p>
+                                        <div className="flex gap-2">
                                             <input 
                                                 type="text" 
-                                                defaultValue={c[`task${i}`]} 
-                                                placeholder={`Opdracht ${i}`} 
+                                                defaultValue={c.schemaUrl} 
+                                                placeholder="PDF Link (Schema 1)" 
                                                 className="flex-1 bg-gray-50 border-none rounded-xl p-3 text-[10px] font-bold outline-none"
-                                                onBlur={(e) => updateClientField(c.id, `task${i}`, e.target.value)}
+                                                onBlur={(e) => updateClientField(c.id, 'schemaUrl', e.target.value)}
                                             />
-                                            <div className="bg-slate-100 p-3 rounded-xl text-green-500"><ListTodo size={14}/></div>
+                                            <div className="bg-slate-100 p-3 rounded-xl text-slate-400"><FileText size={14}/></div>
                                         </div>
-                                    ))}
-                                </div>
-                                <div className="grid grid-cols-1 gap-2 mt-2 border-t pt-2 border-slate-50">
-                                    <p className="text-[9px] font-black uppercase italic text-slate-400">Verkoop & Retentie (Timer):</p>
-                                    <div className="flex gap-2">
-                                        <input 
-                                            type="date" 
-                                            defaultValue={c.endDate} 
-                                            className="flex-1 bg-gray-50 border-none rounded-xl p-3 text-[10px] font-bold outline-none text-slate-600"
-                                            onBlur={(e) => updateClientField(c.id, 'endDate', e.target.value)}
-                                        />
-                                        <div className="bg-slate-100 p-3 rounded-xl text-orange-500"><Clock size={14}/></div>
+                                        <div className="flex gap-2">
+                                            <input 
+                                                type="text" 
+                                                defaultValue={c.schemaUrl2} 
+                                                placeholder="PDF Link (Schema 2)" 
+                                                className="flex-1 bg-gray-50 border-none rounded-xl p-3 text-[10px] font-bold outline-none"
+                                                onBlur={(e) => updateClientField(c.id, 'schemaUrl2', e.target.value)}
+                                            />
+                                            <div className="bg-slate-100 p-3 rounded-xl text-slate-400"><FileText size={14}/></div>
+                                        </div>
                                     </div>
-                                    <div className="flex gap-2">
-                                        <input 
-                                            type="text" 
-                                            defaultValue={c.webshopUrl} 
-                                            placeholder="Link voor 'Verleng jouw progressie'" 
-                                            className="flex-1 bg-gray-50 border-none rounded-xl p-3 text-[10px] font-bold outline-none"
-                                            onBlur={(e) => updateClientField(c.id, 'webshopUrl', e.target.value)}
-                                        />
-                                        <div className="bg-slate-100 p-3 rounded-xl text-green-500"><ShoppingCart size={14}/></div>
-                                    </div>
+
                                     <div className="flex gap-2">
                                         <input 
                                             type="text" 
-                                            defaultValue={c.extraToolsUrl} 
-                                            placeholder="Link voor 'Bekijk onze extra tools'" 
+                                            defaultValue={c.weeklyChallenge} 
+                                            placeholder="Wekelijkse Challenge (Focus tekst)" 
                                             className="flex-1 bg-gray-50 border-none rounded-xl p-3 text-[10px] font-bold outline-none"
-                                            onBlur={(e) => updateClientField(c.id, 'extraToolsUrl', e.target.value)}
+                                            onBlur={(e) => updateClientField(c.id, 'weeklyChallenge', e.target.value)}
                                         />
-                                        <div className="bg-slate-100 p-3 rounded-xl text-purple-500"><Tag size={14}/></div>
+                                        <div className="bg-slate-100 p-3 rounded-xl text-blue-500"><Zap size={14}/></div>
+                                    </div>
+                                    <div className="grid grid-cols-1 gap-2 mt-2 border-t pt-2 border-slate-50">
+                                        <p className="text-[9px] font-black uppercase italic text-slate-400">Opdrachten om af te vinken:</p>
+                                        {[1, 2, 3].map(i => (
+                                            <div key={i} className="flex gap-2">
+                                                <input 
+                                                    type="text" 
+                                                    defaultValue={c[`task${i}`]} 
+                                                    placeholder={`Opdracht ${i}`} 
+                                                    className="flex-1 bg-gray-50 border-none rounded-xl p-3 text-[10px] font-bold outline-none"
+                                                    onBlur={(e) => updateClientField(c.id, `task${i}`, e.target.value)}
+                                                />
+                                                <div className="bg-slate-100 p-3 rounded-xl text-green-500"><ListTodo size={14}/></div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                    <div className="grid grid-cols-1 gap-2 mt-2 border-t pt-2 border-slate-50">
+                                        <p className="text-[9px] font-black uppercase italic text-slate-400">Verkoop & Retentie (Timer):</p>
+                                        <div className="flex gap-2">
+                                            <input 
+                                                type="date" 
+                                                defaultValue={c.endDate} 
+                                                className="flex-1 bg-gray-50 border-none rounded-xl p-3 text-[10px] font-bold outline-none text-slate-600"
+                                                onBlur={(e) => updateClientField(c.id, 'endDate', e.target.value)}
+                                            />
+                                            <div className="bg-slate-100 p-3 rounded-xl text-orange-500"><Clock size={14}/></div>
+                                        </div>
+                                        <div className="flex gap-2">
+                                            <input 
+                                                type="text" 
+                                                defaultValue={c.webshopUrl} 
+                                                placeholder="Link voor 'Verleng jouw progressie'" 
+                                                className="flex-1 bg-gray-50 border-none rounded-xl p-3 text-[10px] font-bold outline-none"
+                                                onBlur={(e) => updateClientField(c.id, 'webshopUrl', e.target.value)}
+                                            />
+                                            <div className="bg-slate-100 p-3 rounded-xl text-green-500"><ShoppingCart size={14}/></div>
+                                        </div>
+                                        <div className="flex gap-2">
+                                            <input 
+                                                type="text" 
+                                                defaultValue={c.extraToolsUrl} 
+                                                placeholder="Link voor 'Bekijk onze extra tools'" 
+                                                className="flex-1 bg-gray-50 border-none rounded-xl p-3 text-[10px] font-bold outline-none"
+                                                onBlur={(e) => updateClientField(c.id, 'extraToolsUrl', e.target.value)}
+                                            />
+                                            <div className="bg-slate-100 p-3 rounded-xl text-purple-500"><Tag size={14}/></div>
+                                        </div>
                                     </div>
                                 </div>
-                            </div>
+                            )}
                         </div>
                     ))}
                 </div>
