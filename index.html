@@ -49,7 +49,7 @@ import {
   Calendar, Smile, CheckCircle2, Users, MessageCircle, TrendingDown, 
   Lock, X, Trophy, Target, Activity, Dumbbell, Apple, 
   Stethoscope, ChevronRight, Droplets, Camera, Check, Brain, Smartphone, AlertCircle, Trash2, Eye, EyeOff, Search, UserPlus, Flame, BarChart3, Zap, Star, FileText, Save, ListTodo,
-  ShoppingCart, Clock, Tag, Gift, Timer, Crown, Medal, Send, Share2, Copy, Ticket, Bell
+  ShoppingCart, Clock, Tag, Gift, Timer, Crown, Medal, Send, Share2, Copy, Ticket, Bell, Image as ImageIcon, Key
 } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
 import { getFirestore, collection, addDoc, onSnapshot, query, serverTimestamp, doc, deleteDoc, setDoc, getDocs, updateDoc, orderBy, limit } from 'firebase/firestore';
@@ -189,7 +189,6 @@ const App = () => {
   const [submissions, setSubmissions] = useState([]);
   const [clients, setClients] = useState([]);
   
-  // Challenge Settings State
   const [challengeSettings, setChallengeSettings] = useState({
       status: 'Gesloten',
       week: 1,
@@ -203,7 +202,8 @@ const App = () => {
       endDate: '',
       prize1: '',
       prize2: '',
-      prize3: ''
+      prize3: '',
+      pinnedChatText: ''
   });
 
   const [newWinner, setNewWinner] = useState({
@@ -213,10 +213,9 @@ const App = () => {
       photoBase64: ''
   });
   
-  // Chat, Share & SOS States
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [showShareModal, setShowShareModal] = useState(false);
-  const [showSOSModal, setShowSOSModal] = useState(false); // NIEUW: SOS State
+  const [showSOSModal, setShowSOSModal] = useState(false); 
   const [chatMessages, setChatMessages] = useState([]);
   const [newChatMessage, setNewChatMessage] = useState('');
   const chatEndRef = useRef(null);
@@ -264,11 +263,26 @@ const App = () => {
         if (doc.exists()) setChallengeSettings(doc.data());
     });
     
-    // Chat messages inladen 
-    const qChat = query(collection(db, 'challenge_messages'), orderBy('createdAt', 'desc'), limit(50));
+    // Auto-clean 24 uur in Chat logic
+    const qChat = query(collection(db, 'challenge_messages'), orderBy('createdAt', 'desc'), limit(100));
     const unsubChat = onSnapshot(qChat, (snapshot) => {
-        const msgs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })).reverse();
-        setChatMessages(msgs);
+        const now = Date.now();
+        const msgs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        
+        msgs.forEach(async (msg) => {
+            if (msg.createdAt && typeof msg.createdAt.toMillis === 'function') {
+                if (now - msg.createdAt.toMillis() > 86400000) { 
+                    await deleteDoc(doc(db, 'challenge_messages', msg.id));
+                }
+            }
+        });
+        
+        const validMsgs = msgs.filter(m => {
+            if (!m.createdAt || typeof m.createdAt.toMillis !== 'function') return true;
+            return now - m.createdAt.toMillis() <= 86400000;
+        });
+        
+        setChatMessages(validMsgs.reverse());
     });
     
     return () => { unsubSub(); unsubCli(); unsubChal(); unsubChat(); };
@@ -280,13 +294,15 @@ const App = () => {
       }
   }, [chatMessages, isChatOpen]);
 
-  const handleSendMessage = async (e) => {
-      e.preventDefault();
-      if (!newChatMessage.trim() || !formData.clientName) return;
+  const handleSendMessage = async (e, photoData = null) => {
+      if (e) e.preventDefault();
+      const senderName = view === 'coach' ? "Coach" : formData.clientName;
+      if (!newChatMessage.trim() && !photoData) return;
       try {
           await addDoc(collection(db, 'challenge_messages'), {
               text: newChatMessage.trim(),
-              sender: formData.clientName,
+              photoBase64: photoData || null,
+              sender: senderName,
               createdAt: serverTimestamp()
           });
           setNewChatMessage('');
@@ -295,20 +311,89 @@ const App = () => {
       }
   };
 
+  const handleChatImageUpload = (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = (event) => {
+          const img = new Image();
+          img.onload = () => {
+              const canvas = document.createElement('canvas');
+              const MAX_WIDTH = 600;
+              let scaleSize = MAX_WIDTH / img.width;
+              if (scaleSize > 1) scaleSize = 1;
+              canvas.width = img.width * scaleSize;
+              canvas.height = img.height * scaleSize;
+              const ctx = canvas.getContext('2d');
+              ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+              handleSendMessage(null, canvas.toDataURL('image/jpeg', 0.6));
+          };
+          img.src = event.target.result;
+      };
+      reader.readAsDataURL(file);
+  };
+
+  const deleteChatMessage = async (id) => {
+      if (window.confirm("Wil je dit bericht echt verwijderen?")) {
+          await deleteDoc(doc(db, 'challenge_messages', id));
+      }
+  };
+
+  const toggleFire = async (msgId, currentReactions) => {
+      const currentUser = view === 'coach' ? "Coach" : formData.clientName;
+      if (!currentUser) return;
+      const newReactions = currentReactions.includes(currentUser)
+          ? currentReactions.filter(u => u !== currentUser)
+          : [...currentReactions, currentUser];
+      try {
+          await updateDoc(doc(db, 'challenge_messages', msgId), { fireReactions: newReactions });
+      } catch (err) { 
+          console.error("Fout bij reageren", err); 
+      }
+  };
+
+  // NIEUW: Veilige inlog-logica met 3x fout = blokkade
   const handleClientLogin = (e) => {
     e.preventDefault();
+    const safeName = loginName.trim().toLowerCase();
+    const now = Date.now();
+    const lockoutKey = 'fe_lockout_' + safeName;
+    const attemptsKey = 'fe_attempts_' + safeName;
+
+    // Check of de gebruiker momenteel is geblokkeerd
+    const lockoutTime = localStorage.getItem(lockoutKey);
+    if (lockoutTime && now < parseInt(lockoutTime)) {
+        const minutesLeft = Math.ceil((parseInt(lockoutTime) - now) / 60000);
+        setLoginError(`Veiligheidsblokkade. Probeer het over ${minutesLeft} minuten opnieuw.`);
+        return;
+    }
+
     const client = clients.find(c => 
-      c.name.trim().toLowerCase() === loginName.trim().toLowerCase() && 
+      c.name.trim().toLowerCase() === safeName && 
       String(c.code).trim() === loginCode.trim()
     );
     
     if (client) {
+      // Bij succes: reset alle veiligheids-counters
+      localStorage.removeItem(lockoutKey);
+      localStorage.removeItem(attemptsKey);
+      
       setFormData(prev => ({ ...prev, clientName: client.name }));
       localStorage.setItem('fe_name', client.name);
       setView('client');
       setLoginError('');
     } else {
-      setLoginError('Naam of code niet gevonden');
+      // Bij fout: tel pogingen op
+      let attempts = parseInt(localStorage.getItem(attemptsKey) || '0') + 1;
+      if (attempts >= 3) {
+          // 3x fout? 15 minuten (15 * 60 * 1000 ms) blokkade instellen
+          localStorage.setItem(lockoutKey, (now + 15 * 60 * 1000).toString());
+          localStorage.removeItem(attemptsKey);
+          setLoginError('Te veel mislukte pogingen. Account 15 minuten geblokkeerd.');
+      } else {
+          localStorage.setItem(attemptsKey, attempts.toString());
+          setLoginError(`Naam of code onjuist. Poging ${attempts}/3`);
+      }
     }
   };
 
@@ -328,6 +413,10 @@ const App = () => {
         webshopUrl: '',
         extraToolsUrl: '', 
         isChallengeParticipant: false,
+        personalGoal: '', 
+        targetWeight: '',
+        subGoal1: '',
+        subGoal2: '',
         createdAt: serverTimestamp()
       });
       setNewClientName('');
@@ -449,7 +538,6 @@ const App = () => {
     return submissions.filter(s => (s.clientName || "").toLowerCase().includes(searchTerm.toLowerCase()));
   }, [submissions, searchTerm]);
 
-  // De Slimme Rekenmachine
   const weeklyStats = useMemo(() => {
       const sevenDaysAgo = new Date();
       sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
@@ -479,7 +567,16 @@ const App = () => {
               trainingCount = clientSubs.filter(s => s.trainingDay === true).length;
           }
 
-          return { id: client.id, name: client.name, checkinCount, avgWeight, avgSteps, avgSleep, trainingCount };
+          return { 
+              id: client.id, 
+              name: client.name, 
+              checkinCount, 
+              avgWeight, 
+              avgSteps, 
+              avgSleep, 
+              trainingCount,
+              targetWeight: client.targetWeight || ''
+          };
       }).sort((a, b) => b.checkinCount - a.checkinCount); 
   }, [clients, submissions]);
 
@@ -552,6 +649,20 @@ const App = () => {
         daysLeft = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
     }
 
+    const targetW = parseFloat(clientInfo?.targetWeight);
+    const startW = parseFloat(firstWeight);
+    const currW = parseFloat(lastWeight);
+    let goalProgress = 0;
+
+    if (!isNaN(targetW) && !isNaN(startW) && !isNaN(currW) && startW !== targetW) {
+        if (startW > targetW) { 
+            goalProgress = ((startW - currW) / (startW - targetW)) * 100;
+        } else { 
+            goalProgress = ((currW - startW) / (targetW - startW)) * 100;
+        }
+        goalProgress = Math.max(0, Math.min(100, Math.round(goalProgress)));
+    }
+
     return {
         clientId: clientInfo?.id,
         isChallengeParticipant: clientInfo?.isChallengeParticipant || false,
@@ -572,6 +683,11 @@ const App = () => {
         webshopUrl: clientInfo?.webshopUrl || '',
         extraToolsUrl: clientInfo?.extraToolsUrl || '',
         daysLeft,
+        personalGoal: clientInfo?.personalGoal || '',
+        targetWeight: clientInfo?.targetWeight || '',
+        subGoal1: clientInfo?.subGoal1 || '',
+        subGoal2: clientInfo?.subGoal2 || '',
+        goalProgress,
         percWater: Math.min(100, Math.round((avgWater / 2.5) * 100)),
         percTraining: Math.min(100, Math.round((trainingsCount / 3) * 100)),
         percSleep: Math.min(100, Math.round((avgSleep / 7) * 100)),
@@ -603,6 +719,24 @@ const App = () => {
           alert("Tekst succesvol gekopieerd! Je kunt het nu in WhatsApp of op Instagram plakken.");
       } catch (err) {
           window.open(`https://wa.me/?text=${encodeURIComponent(shareText)}`);
+      }
+  };
+
+  const handleShareWin = async () => {
+      if (!clientData.latestWin) {
+          alert("Je hebt nog geen recente winst ingevuld bij je laatste check-in!");
+          return;
+      }
+      try {
+          await addDoc(collection(db, 'challenge_messages'), {
+              text: `🔥 Winst van de Dag!\n\nStreak: ${clientData.streak} Dagen 🚀\nMijn Winst: "${clientData.latestWin}"`,
+              sender: formData.clientName,
+              createdAt: serverTimestamp()
+          });
+          alert("Jouw winst is succesvol gedeeld in de community chat!");
+      } catch (err) {
+          console.error("Fout bij delen winst", err);
+          alert("Er ging iets mis bij het delen.");
       }
   };
 
@@ -647,8 +781,8 @@ const App = () => {
 
   if (view === 'coach') {
     return (
-      <div className="min-h-screen bg-[#FDFDFD] p-4 md:p-8">
-        <div className="max-w-6xl mx-auto">
+      <div className="min-h-screen bg-[#FDFDFD] p-4 md:p-8 relative">
+        <div className="max-w-6xl mx-auto pb-20">
           <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-10 gap-4">
             <div>
                 <div className="bg-[#E31E24] text-white px-6 py-2 font-black italic text-2xl skew-x-[-10deg] uppercase tracking-tighter inline-block">FOR-EFFECT COACH</div>
@@ -676,7 +810,7 @@ const App = () => {
                                 <tr className="border-b border-slate-100 text-[10px] font-black uppercase text-slate-400 italic tracking-wider">
                                     <th className="pb-3 pl-2">Klant</th>
                                     <th className="pb-3 text-center">Check-ins</th>
-                                    <th className="pb-3 text-center">Gem. Gewicht</th>
+                                    <th className="pb-3 text-center">Gem. Gewicht / Doel</th>
                                     <th className="pb-3 text-center">Trainingen (Totaal)</th>
                                     <th className="pb-3 text-center">Gem. Stappen</th>
                                     <th className="pb-3 text-center">Gem. Slaap</th>
@@ -691,7 +825,10 @@ const App = () => {
                                                 {stat.checkinCount}x
                                             </span>
                                         </td>
-                                        <td className="py-4 text-center font-black italic text-slate-700">{stat.avgWeight !== '-' ? `${stat.avgWeight} kg` : '-'}</td>
+                                        <td className="py-4 text-center font-black italic text-slate-700">
+                                            {stat.avgWeight !== '-' ? `${stat.avgWeight} kg` : '-'}
+                                            {stat.targetWeight && <span className="block text-[9px] text-slate-400 uppercase mt-0.5">Doel: {stat.targetWeight}kg</span>}
+                                        </td>
                                         <td className="py-4 text-center font-black italic text-slate-700">{stat.trainingCount > 0 ? `${stat.trainingCount}x` : '-'}</td>
                                         <td className="py-4 text-center font-black italic text-slate-700">{stat.avgSteps}</td>
                                         <td className="py-4 text-center font-black italic text-slate-700">{stat.avgSleep !== '-' ? `${stat.avgSleep}u` : '-'}</td>
@@ -710,7 +847,20 @@ const App = () => {
                 <Card title="Nieuwe Klant Toevoegen" icon={UserPlus}>
                     <form onSubmit={handleAddClient} className="flex flex-col gap-4">
                         <FormInput placeholder="Naam Klant" value={newClientName} onChange={(e) => setNewClientName(e.target.value)} />
-                        <FormInput placeholder="Kies Code (bijv 1234)" value={newClientCode} onChange={(e) => setNewClientCode(e.target.value)} />
+                        {/* NIEUW: De Dice/Key knop voor sterke code generatie */}
+                        <div className="flex items-start gap-2">
+                            <div className="flex-1">
+                                <FormInput placeholder="Kies Code (of genereer)" value={newClientCode} onChange={(e) => setNewClientCode(e.target.value)} />
+                            </div>
+                            <button type="button" onClick={() => {
+                                const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+                                let code = 'FX-';
+                                for(let i=0; i<4; i++) code += chars.charAt(Math.floor(Math.random() * chars.length));
+                                setNewClientCode(code);
+                            }} className="bg-slate-100 text-slate-500 w-[52px] h-[52px] rounded-2xl flex items-center justify-center hover:bg-slate-200 transition-colors shadow-sm shrink-0" title="Genereer veilige code">
+                                <Key size={18} />
+                            </button>
+                        </div>
                         <button type="submit" className="bg-slate-900 text-white py-4 rounded-2xl font-black uppercase italic text-xs">Toevoegen</button>
                     </form>
                 </Card>
@@ -732,25 +882,51 @@ const App = () => {
                                 </div>
                             </div>
                             <div className="grid grid-cols-1 gap-2">
-                                <div className="flex gap-2">
-                                    <input 
-                                        type="text" 
-                                        defaultValue={c.schemaUrl} 
-                                        placeholder="PDF Link (Schema 1)" 
-                                        className="flex-1 bg-gray-50 border-none rounded-xl p-3 text-[10px] font-bold outline-none"
-                                        onBlur={(e) => updateClientField(c.id, 'schemaUrl', e.target.value)}
-                                    />
-                                    <div className="bg-slate-100 p-3 rounded-xl text-slate-400"><FileText size={14}/></div>
+                                <FormInput 
+                                    placeholder="Persoonlijk Doel (voor SOS)" 
+                                    value={c.personalGoal || ''} 
+                                    onChange={(e) => updateClientField(c.id, 'personalGoal', e.target.value)} 
+                                    className="text-[10px] !mb-0"
+                                />
+                                
+                                <div className="grid grid-cols-1 gap-2 mt-2 border-t pt-2 border-slate-50">
+                                    <p className="text-[9px] font-black uppercase italic text-slate-400">Doelstellingen:</p>
+                                    <div className="flex gap-2">
+                                        <input type="number" defaultValue={c.targetWeight} placeholder="Streefgewicht (kg)" className="flex-1 bg-gray-50 border-none rounded-xl p-3 text-[10px] font-bold outline-none" onBlur={(e) => updateClientField(c.id, 'targetWeight', e.target.value)} />
+                                        <div className="bg-slate-100 p-3 rounded-xl text-red-500"><Target size={14}/></div>
+                                    </div>
+                                    <div className="flex gap-2">
+                                        <input type="text" defaultValue={c.subGoal1} placeholder="Subdoel 1" className="flex-1 bg-gray-50 border-none rounded-xl p-3 text-[10px] font-bold outline-none" onBlur={(e) => updateClientField(c.id, 'subGoal1', e.target.value)} />
+                                        <div className="bg-slate-100 p-3 rounded-xl text-orange-500"><Star size={14}/></div>
+                                    </div>
+                                    <div className="flex gap-2">
+                                        <input type="text" defaultValue={c.subGoal2} placeholder="Subdoel 2" className="flex-1 bg-gray-50 border-none rounded-xl p-3 text-[10px] font-bold outline-none" onBlur={(e) => updateClientField(c.id, 'subGoal2', e.target.value)} />
+                                        <div className="bg-slate-100 p-3 rounded-xl text-orange-500"><Star size={14}/></div>
+                                    </div>
                                 </div>
-                                <div className="flex gap-2">
-                                    <input 
-                                        type="text" 
-                                        defaultValue={c.schemaUrl2} 
-                                        placeholder="PDF Link (Schema 2)" 
-                                        className="flex-1 bg-gray-50 border-none rounded-xl p-3 text-[10px] font-bold outline-none"
-                                        onBlur={(e) => updateClientField(c.id, 'schemaUrl2', e.target.value)}
-                                    />
-                                    <div className="bg-slate-100 p-3 rounded-xl text-slate-400"><FileText size={14}/></div>
+
+                                <div className="grid grid-cols-1 gap-2 mt-2 border-t pt-2 border-slate-50">
+                                    <p className="text-[9px] font-black uppercase italic text-slate-400">Trainingsschema's:</p>
+                                    <div className="flex gap-2">
+                                        <input 
+                                            type="text" 
+                                            defaultValue={c.schemaUrl} 
+                                            placeholder="PDF Link (Schema 1)" 
+                                            className="flex-1 bg-gray-50 border-none rounded-xl p-3 text-[10px] font-bold outline-none"
+                                            onBlur={(e) => updateClientField(c.id, 'schemaUrl', e.target.value)}
+                                        />
+                                        <div className="bg-slate-100 p-3 rounded-xl text-slate-400"><FileText size={14}/></div>
+                                    </div>
+                                    <div className="flex gap-2">
+                                        <input 
+                                            type="text" 
+                                            defaultValue={c.schemaUrl2} 
+                                            placeholder="PDF Link (Schema 2)" 
+                                            className="flex-1 bg-gray-50 border-none rounded-xl p-3 text-[10px] font-bold outline-none"
+                                            onBlur={(e) => updateClientField(c.id, 'schemaUrl2', e.target.value)}
+                                        />
+                                        <div className="bg-slate-100 p-3 rounded-xl text-slate-400"><FileText size={14}/></div>
+                                    </div>
                                 </div>
 
                                 <div className="flex gap-2">
@@ -837,6 +1013,8 @@ const App = () => {
                         </div>
 
                         <FormInput label="Protocol PDF Link" placeholder="https://..." value={challengeSettings.protocolUrl} onChange={(e) => updateChallengeGlobal('protocolUrl', e.target.value)} />
+                        
+                        <FormInput label="Vastgezet Chat Bericht" placeholder="Bijv. Thema: Deel je maaltijd!" value={challengeSettings.pinnedChatText || ''} onChange={(e) => updateChallengeGlobal('pinnedChatText', e.target.value)} />
                     </div>
                 </Card>
 
@@ -951,6 +1129,82 @@ const App = () => {
             </div>
             </>
           )}
+
+          <button 
+              onClick={() => setIsChatOpen(true)}
+              className="fixed bottom-6 right-6 w-14 h-14 bg-slate-900 text-white rounded-full shadow-2xl flex items-center justify-center hover:scale-105 active:scale-95 transition-all z-40 border-2 border-white"
+          >
+              <MessageCircle size={24} />
+          </button>
+
+          {isChatOpen && (
+              <div className="fixed bottom-6 right-4 left-4 md:left-auto md:w-[350px] h-[60vh] md:h-[500px] bg-white rounded-3xl shadow-2xl border border-slate-100 flex flex-col z-50 overflow-hidden animate-in slide-in-from-bottom-10">
+                  <div className="bg-slate-900 p-4 text-white flex justify-between items-center shadow-md z-10">
+                      <div className="flex items-center gap-2">
+                          <Flame size={20} className="text-yellow-500" />
+                          <h3 className="font-black italic uppercase text-sm tracking-wide">Community Chat (Beheer)</h3>
+                      </div>
+                      <button onClick={() => setIsChatOpen(false)} className="text-white hover:text-slate-300 bg-white/10 rounded-full p-1.5 transition-colors">
+                          <X size={16}/>
+                      </button>
+                  </div>
+
+                  {challengeSettings.pinnedChatText && (
+                      <div className="bg-orange-50 border-b border-orange-100 p-2.5 px-4 text-[10px] text-orange-800 flex items-center gap-2 shadow-sm z-10 relative">
+                          <Star size={14} className="text-orange-500 shrink-0 animate-pulse" />
+                          <span className="font-black italic uppercase tracking-wider">{challengeSettings.pinnedChatText}</span>
+                      </div>
+                  )}
+                  
+                  <div className="flex-1 overflow-y-auto p-4 bg-slate-50 space-y-4">
+                      {chatMessages.map(msg => {
+                          const isMe = msg.sender === "Coach";
+                          const isCoach = msg.sender === "Coach";
+                          return (
+                              <div key={msg.id} className={`flex flex-col ${isMe ? 'items-end' : 'items-start'}`}>
+                                  <div className="flex items-center gap-1.5 mb-1 mx-1">
+                                      <span className="text-[9px] font-black text-slate-400 uppercase italic tracking-wider">{msg.sender}</span>
+                                      {isCoach && <span className="bg-gradient-to-r from-yellow-400 to-orange-500 text-white text-[8px] font-black px-1.5 py-0.5 rounded shadow-sm">COACH</span>}
+                                      <button onClick={() => deleteChatMessage(msg.id)} className="text-slate-300 hover:text-red-500 transition-colors ml-1"><Trash2 size={10}/></button>
+                                  </div>
+                                  <div className={`px-4 py-2.5 rounded-2xl max-w-[85%] text-sm shadow-sm ${isMe ? 'bg-slate-900 text-white rounded-br-sm' : 'bg-white text-slate-700 border border-slate-100 rounded-bl-sm font-medium'}`}>
+                                      {msg.text && <p className="whitespace-pre-wrap">{msg.text}</p>}
+                                      {msg.photoBase64 && <img src={msg.photoBase64} alt="Upload" className="mt-2 rounded-xl max-w-full h-auto border border-black/10 shadow-sm" />}
+                                  </div>
+                                  <div className="mt-1">
+                                      <button onClick={() => toggleFire(msg.id, msg.fireReactions || [])} className={`flex items-center gap-1 text-[9px] font-black italic px-2 py-0.5 rounded-full border transition-all ${(msg.fireReactions || []).includes("Coach") ? 'bg-orange-100 border-orange-200 text-orange-600' : 'bg-white border-slate-200 text-slate-400 hover:bg-slate-50'}`}>
+                                          🔥 {(msg.fireReactions && msg.fireReactions.length > 0) ? msg.fireReactions.length : 'Reageer'}
+                                      </button>
+                                  </div>
+                              </div>
+                          );
+                      })}
+                      <div ref={chatEndRef} />
+                  </div>
+
+                  <form onSubmit={(e) => handleSendMessage(e)} className="p-3 bg-white border-t border-slate-100 flex gap-2 items-center">
+                      <label className="cursor-pointer text-slate-400 hover:text-slate-900 transition-colors p-2 bg-slate-100 rounded-full flex items-center justify-center shrink-0">
+                          <ImageIcon size={20} />
+                          <input type="file" accept="image/*" onChange={handleChatImageUpload} className="hidden" />
+                      </label>
+                      <input
+                          type="text"
+                          placeholder="Stuur een bericht als Coach..."
+                          value={newChatMessage}
+                          onChange={(e) => setNewChatMessage(e.target.value)}
+                          className="flex-1 bg-slate-100 border-none rounded-full px-4 py-3 text-sm font-medium outline-none focus:ring-2 focus:ring-slate-900/50 text-slate-800"
+                      />
+                      <button 
+                          type="submit" 
+                          disabled={!newChatMessage.trim()}
+                          className="w-11 h-11 bg-slate-900 text-white rounded-full flex items-center justify-center shrink-0 disabled:opacity-50 active:scale-95 transition-transform"
+                      >
+                          <Send size={18} className="ml-1" />
+                      </button>
+                  </form>
+              </div>
+          )}
+
         </div>
       </div>
     );
@@ -967,7 +1221,7 @@ const App = () => {
       </div>
 
       <div className="max-w-2xl mx-auto px-4">
-        
+
         {/* DE INSTA-STORY REPORT CARD MODAL */}
         {showShareModal && (
             <div className="fixed inset-0 z-50 bg-slate-900/95 backdrop-blur-sm overflow-y-auto animate-in fade-in duration-300">
@@ -1057,8 +1311,10 @@ const App = () => {
                         <AlertCircle size={32} className="text-red-600" />
                     </div>
                     <h3 className="text-xl font-black italic uppercase mb-2">Adem in, adem uit...</h3>
-                    <p className="text-sm font-bold text-slate-500 mb-8 italic">Je bent sterker dan deze drang. Denk aan je doel: fit zijn voor je gezin. Je staat er niet alleen voor.</p>
-                    <button onClick={() => window.open('https://wa.me/?text=Hey%20coach,%20ik%20heb%20even%20een%20moeilijk%20moment.%20Kun%20je%20me%20helpen?')} className="w-full py-4 bg-[#E31E24] text-white rounded-2xl font-black italic uppercase mb-3 shadow-lg">Stuur Coach een appje</button>
+                    <p className="text-sm font-bold text-slate-500 mb-8 italic">
+                        Je bent sterker dan deze drang. Denk aan je doel: <strong>{clientData.personalGoal || 'fit zijn voor je gezin'}</strong>. Je staat er niet alleen voor.
+                    </p>
+                    <button onClick={() => window.open(`https://wa.me/?text=${encodeURIComponent(`Hey coach, ik heb even een moeilijk moment. Kun je me helpen?`)}`)} className="w-full py-4 bg-[#E31E24] text-white rounded-2xl font-black italic uppercase mb-3 shadow-lg">Stuur Coach een appje</button>
                     <button onClick={() => setShowSOSModal(false)} className="w-full py-4 bg-slate-100 text-slate-600 rounded-2xl font-black italic uppercase">Ik ga ademhalen, bedankt!</button>
                 </div>
             </div>
@@ -1094,12 +1350,10 @@ const App = () => {
                     </p>
                 </div>
 
-                {/* SOS KNOP */}
                 <button onClick={() => setShowSOSModal(true)} className="w-full py-3 bg-red-100 text-red-600 rounded-[2rem] font-black italic uppercase shadow-sm flex items-center justify-center gap-2 mb-6 hover:bg-red-200 transition-all">
                     <AlertCircle size={18} /> SOS: Moeilijk Moment?
                 </button>
 
-                {/* Zondagavond Reminder */}
                 {(new Date().getDay() === 0 && new Date().getHours() >= 18) && (
                     <div className="bg-gradient-to-r from-orange-400 to-[#E31E24] rounded-[2rem] p-5 mb-6 flex items-center gap-4 shadow-lg text-white relative overflow-hidden animate-in fade-in slide-in-from-top-4 duration-500">
                         <Bell className="absolute right-[-10px] bottom-[-10px] text-white/10" size={64} />
@@ -1112,6 +1366,55 @@ const App = () => {
                         </div>
                     </div>
                 )}
+
+                <Card title="Mijn Doel" icon={Target}>
+                    {clientData.targetWeight ? (
+                        <>
+                            <div className="flex justify-between items-end mb-2">
+                                <div>
+                                    <p className="text-[10px] font-black uppercase italic text-slate-400">Streefgewicht</p>
+                                    <p className="text-2xl font-black italic text-slate-800">{clientData.targetWeight} <span className="text-xs text-slate-500">kg</span></p>
+                                </div>
+                                <div className="text-right">
+                                    <p className="text-[10px] font-black uppercase italic text-slate-400">Voortgang</p>
+                                    <p className="text-xl font-black italic text-[#E31E24]">{clientData.goalProgress}%</p>
+                                </div>
+                            </div>
+                            <div className="w-full h-2.5 bg-slate-100 rounded-full overflow-hidden mb-4 shadow-inner">
+                                <div className="h-full bg-gradient-to-r from-orange-400 to-[#E31E24] transition-all duration-1000 ease-out" style={{ width: `${clientData.goalProgress}%` }}></div>
+                            </div>
+                        </>
+                    ) : (
+                        <div className="mb-4">
+                            <p className="text-[10px] font-black uppercase italic text-slate-400">Streefgewicht</p>
+                            <p className="text-xs font-bold text-slate-500 italic mt-1">Streefgewicht wordt door de coach ingesteld.</p>
+                        </div>
+                    )}
+                    
+                    <div className="border-t border-slate-50 pt-4 space-y-2">
+                        <p className="text-[9px] font-black uppercase italic text-slate-400 mb-2">Mijn Subdoelen (Zelf in te vullen)</p>
+                        <div className="flex items-center gap-2 bg-slate-50 p-1.5 rounded-xl border border-slate-100 focus-within:border-orange-200 transition-colors">
+                            <Star size={14} className="text-orange-500 shrink-0 ml-2" />
+                            <input 
+                                type="text" 
+                                defaultValue={clientData.subGoal1} 
+                                placeholder="Subdoel 1 (bijv. 5km hardlopen)" 
+                                className="flex-1 bg-transparent border-none p-2 text-[11px] font-bold outline-none text-slate-700 placeholder-slate-300"
+                                onBlur={(e) => updateClientField(clientData.clientId, 'subGoal1', e.target.value)}
+                            />
+                        </div>
+                        <div className="flex items-center gap-2 bg-slate-50 p-1.5 rounded-xl border border-slate-100 focus-within:border-orange-200 transition-colors">
+                            <Star size={14} className="text-orange-500 shrink-0 ml-2" />
+                            <input 
+                                type="text" 
+                                defaultValue={clientData.subGoal2} 
+                                placeholder="Subdoel 2 (bijv. In mijn oude broek passen)" 
+                                className="flex-1 bg-transparent border-none p-2 text-[11px] font-bold outline-none text-slate-700 placeholder-slate-300"
+                                onBlur={(e) => updateClientField(clientData.clientId, 'subGoal2', e.target.value)}
+                            />
+                        </div>
+                    </div>
+                </Card>
 
                 {clientData.daysLeft !== null && clientData.daysLeft <= 14 && clientData.daysLeft >= 0 && (
                     <div className={`rounded-[2rem] p-5 mb-6 flex items-center gap-4 shadow-sm relative overflow-hidden ${clientData.daysLeft <= 7 ? 'bg-red-50 border border-red-200' : 'bg-orange-50 border border-orange-200'}`}>
@@ -1165,7 +1468,7 @@ const App = () => {
                     <Card title="Mijn Opdrachten" icon={ListTodo}>
                         <div className="space-y-3">
                             {[1, 2, 3].map(i => clientData[`task${i}`] && (
-                                <div key={i} className="flex items-center gap-3 p-4 bg-slate-50 rounded-2xl transition-all">
+                                <div className="flex items-center gap-3 p-4 bg-slate-50 rounded-2xl transition-all" key={i}>
                                     <input 
                                         type="checkbox" 
                                         checked={clientData[`task${i}Done`]} 
@@ -1193,6 +1496,16 @@ const App = () => {
                         <p className="text-3xl font-black italic tracking-tighter text-slate-800">{clientData.streak} Dagen 🔥</p>
                     </div>
                 </div>
+
+                {/* SPRINT 2: ONE-CLICK WIN BUTTON */}
+                {(clientData.isChallengeParticipant && clientData.latestWin) ? (
+                    <button 
+                        onClick={handleShareWin} 
+                        className="w-full mb-6 py-4 bg-gradient-to-r from-yellow-400 to-orange-500 text-white rounded-[2rem] font-black italic uppercase shadow-lg flex items-center justify-center gap-3 active:scale-[0.98] transition-transform"
+                    >
+                        <Flame size={20} className="animate-pulse" /> Deel mijn winst in de chat!
+                    </button>
+                ) : null}
 
                 <div className="grid grid-cols-3 gap-3 mb-6">
                     <div className="bg-white p-4 rounded-2xl border border-slate-50 text-center shadow-sm">
@@ -1264,7 +1577,6 @@ const App = () => {
                 
                 {!clientData.isChallengeParticipant ? (
                     <div className="text-center mt-12 px-4 animate-in fade-in zoom-in duration-500">
-                        {/* THE LOCK / VIP ICON */}
                         <div className="relative w-32 h-32 mx-auto mb-8">
                             <div className="absolute inset-0 bg-slate-900 rounded-full blur-xl opacity-20"></div>
                             <div className="relative w-full h-full bg-slate-900 rounded-full flex items-center justify-center border-4 border-white shadow-2xl">
@@ -1282,7 +1594,6 @@ const App = () => {
                                     Het is zover! De deuren voor de nieuwe 8-Weken Transformatie Challenge staan open. Zorg dat je erbij bent en krijg direct toegang tot:
                                 </p>
 
-                                {/* THE OFFER STACK */}
                                 <div className="bg-slate-900 rounded-3xl p-5 mb-8 text-left shadow-xl border border-slate-800 relative overflow-hidden">
                                     <div className="absolute top-[-50px] right-[-50px] w-[100px] h-[100px] bg-[#E31E24] opacity-20 blur-[40px] rounded-full pointer-events-none"></div>
                                     <ul className="space-y-4 relative z-10">
@@ -1355,6 +1666,7 @@ const App = () => {
                             <MessageCircle size={24} />
                         </button>
 
+                        {/* CLIENT CHAT MODAL */}
                         {isChatOpen && (
                             <div className="fixed bottom-6 right-4 left-4 md:left-auto md:w-[350px] h-[60vh] md:h-[500px] bg-white rounded-3xl shadow-2xl border border-slate-100 flex flex-col z-50 overflow-hidden animate-in slide-in-from-bottom-10">
                                 <div className="bg-[#E31E24] p-4 text-white flex justify-between items-center shadow-md z-10">
@@ -1366,15 +1678,35 @@ const App = () => {
                                         <X size={16}/>
                                     </button>
                                 </div>
+
+                                {/* SPRINT 3: VASTGEZET BERICHT CLIENT */}
+                                {challengeSettings.pinnedChatText && (
+                                    <div className="bg-orange-50 border-b border-orange-100 p-2.5 px-4 text-[10px] text-orange-800 flex items-center gap-2 shadow-sm z-10 relative">
+                                        <Star size={14} className="text-orange-500 shrink-0 animate-pulse" />
+                                        <span className="font-black italic uppercase tracking-wider">{challengeSettings.pinnedChatText}</span>
+                                    </div>
+                                )}
                                 
                                 <div className="flex-1 overflow-y-auto p-4 bg-slate-50 space-y-4">
                                     {chatMessages.map(msg => {
                                         const isMe = msg.sender === formData.clientName;
+                                        const isCoach = msg.sender === "Coach";
                                         return (
                                             <div key={msg.id} className={`flex flex-col ${isMe ? 'items-end' : 'items-start'}`}>
-                                                <span className="text-[9px] font-black text-slate-400 mb-1 mx-1 uppercase italic tracking-wider">{msg.sender}</span>
-                                                <div className={`px-4 py-2.5 rounded-2xl max-w-[85%] text-sm shadow-sm ${isMe ? 'bg-[#E31E24] text-white rounded-br-sm' : 'bg-white text-slate-700 border border-slate-100 rounded-bl-sm font-medium'}`}>
-                                                    {msg.text}
+                                                <div className="flex items-center gap-1.5 mb-1 mx-1">
+                                                    <span className="text-[9px] font-black text-slate-400 uppercase italic tracking-wider">{msg.sender}</span>
+                                                    {isCoach && <span className="bg-gradient-to-r from-yellow-400 to-orange-500 text-white text-[8px] font-black px-1.5 py-0.5 rounded shadow-sm">COACH</span>}
+                                                    {isMe && <button onClick={() => deleteChatMessage(msg.id)} className="text-slate-300 hover:text-red-500 transition-colors ml-1"><Trash2 size={10}/></button>}
+                                                </div>
+                                                <div className={`px-4 py-2.5 rounded-2xl max-w-[85%] text-sm shadow-sm ${isMe ? 'bg-[#E31E24] text-white rounded-br-sm' : isCoach ? 'bg-slate-900 text-white rounded-bl-sm' : 'bg-white text-slate-700 border border-slate-100 rounded-bl-sm font-medium'}`}>
+                                                    {msg.text && <p className="whitespace-pre-wrap">{msg.text}</p>}
+                                                    {msg.photoBase64 && <img src={msg.photoBase64} alt="Upload" className="mt-2 rounded-xl max-w-full h-auto border border-black/10 shadow-sm" />}
+                                                </div>
+                                                {/* SPRINT 3: FIRE BUTTON CLIENT */}
+                                                <div className="mt-1">
+                                                    <button onClick={() => toggleFire(msg.id, msg.fireReactions || [])} className={`flex items-center gap-1 text-[9px] font-black italic px-2 py-0.5 rounded-full border transition-all ${(msg.fireReactions || []).includes(formData.clientName) ? 'bg-orange-100 border-orange-200 text-orange-600' : 'bg-white border-slate-200 text-slate-400 hover:bg-slate-50'}`}>
+                                                        🔥 {(msg.fireReactions && msg.fireReactions.length > 0) ? msg.fireReactions.length : 'Reageer'}
+                                                    </button>
                                                 </div>
                                             </div>
                                         );
@@ -1382,7 +1714,11 @@ const App = () => {
                                     <div ref={chatEndRef} />
                                 </div>
 
-                                <form onSubmit={handleSendMessage} className="p-3 bg-white border-t border-slate-100 flex gap-2 items-center">
+                                <form onSubmit={(e) => handleSendMessage(e)} className="p-3 bg-white border-t border-slate-100 flex gap-2 items-center">
+                                    <label className="cursor-pointer text-slate-400 hover:text-[#E31E24] transition-colors p-2 bg-slate-100 rounded-full flex items-center justify-center shrink-0">
+                                        <ImageIcon size={20} />
+                                        <input type="file" accept="image/*" onChange={handleChatImageUpload} className="hidden" />
+                                    </label>
                                     <input
                                         type="text"
                                         placeholder="Stuur een bericht..."
@@ -1540,47 +1876,60 @@ const App = () => {
                             </button>
                         </div>
 
-                        {/* HALL OF FAME MET SWIPE-CARROUSEL */}
+                        {/* HALL OF FAME MET MYSTERY CARD */}
                         <div className="mt-10 mb-6">
                             <div className="flex items-center gap-2 mb-6 ml-2">
                                 <Star className="text-yellow-500" size={24} />
                                 <h3 className="text-xl font-black italic uppercase tracking-tight text-slate-800">Hall of Fame</h3>
                             </div>
                             
-                            {(challengeSettings.winners && challengeSettings.winners.length > 0) ? (
-                                <div className="flex overflow-x-auto gap-4 pb-4 hide-scrollbar snap-x snap-mandatory px-2 -mx-2">
-                                    {challengeSettings.winners.map(w => (
-                                        <div key={w.id} className="flex-none w-[160px] snap-start bg-white rounded-[1.5rem] p-2 shadow-md border border-slate-100 relative group flex flex-col h-[240px]">
-                                            {/* Gouden lijntje bovenaan */}
-                                            <div className="absolute top-0 left-0 w-full h-1.5 gold-gradient rounded-t-[1.5rem]"></div>
-                                            
-                                            {/* Afbeelding met de 3D trofee */}
-                                            <div className="relative mt-1">
-                                                <div className="w-full aspect-square rounded-t-2xl overflow-hidden shadow-inner bg-slate-50">
-                                                    <img src={w.photoBase64} alt={w.name} className="w-full h-full object-cover" />
-                                                </div>
-                                                <div className="absolute -bottom-4 left-1/2 -translate-x-1/2 bg-white rounded-full p-1.5 shadow-md z-10">
-                                                    <div className="bg-gradient-to-br from-yellow-100 to-orange-100 rounded-full p-1.5 border border-white">
-                                                        <Trophy size={16} className="text-orange-500" />
-                                                    </div>
-                                                </div>
+                            <div className="flex overflow-x-auto gap-4 pb-4 hide-scrollbar snap-x snap-mandatory px-2 -mx-2">
+                                {(challengeSettings.winners || []).map(w => (
+                                    <div key={w.id} className="flex-none w-[160px] snap-start bg-white rounded-[1.5rem] p-2 shadow-md border border-slate-100 relative group flex flex-col h-[240px]">
+                                        {/* Gouden lijntje bovenaan */}
+                                        <div className="absolute top-0 left-0 w-full h-1.5 gold-gradient rounded-t-[1.5rem]"></div>
+                                        
+                                        {/* Afbeelding met de 3D trofee */}
+                                        <div className="relative mt-1">
+                                            <div className="w-full aspect-square rounded-t-2xl overflow-hidden shadow-inner bg-slate-50">
+                                                <img src={w.photoBase64} alt={w.name} className="w-full h-full object-cover" />
                                             </div>
-
-                                            {/* Oranje tekst vlak onderaan */}
-                                            <div className="bg-gradient-to-br from-orange-400 to-[#E31E24] rounded-b-2xl pt-6 pb-3 px-2 text-center flex-1 flex flex-col justify-center shadow-inner mt-[-2px]">
-                                                <p className="text-xs font-black italic uppercase text-white drop-shadow-md truncate px-1">{w.name}</p>
-                                                <p className="text-[7px] font-black uppercase text-orange-100 mt-1 leading-tight tracking-[0.1em] opacity-90 line-clamp-2">{w.type}</p>
-                                                <p className="text-[10px] font-black text-yellow-300 italic mt-auto drop-shadow-md">{w.year}</p>
+                                            <div className="absolute -bottom-4 left-1/2 -translate-x-1/2 bg-white rounded-full p-1.5 shadow-md z-10">
+                                                <div className="bg-gradient-to-br from-yellow-100 to-orange-100 rounded-full p-1.5 border border-white">
+                                                    <Trophy size={16} className="text-orange-500" />
+                                                </div>
                                             </div>
                                         </div>
-                                    ))}
+
+                                        {/* Oranje tekst vlak onderaan */}
+                                        <div className="bg-gradient-to-br from-orange-400 to-[#E31E24] rounded-b-2xl pt-6 pb-3 px-2 text-center flex-1 flex flex-col justify-center shadow-inner mt-[-2px]">
+                                            <p className="text-xs font-black italic uppercase text-white drop-shadow-md truncate px-1">{w.name}</p>
+                                            <p className="text-[7px] font-black uppercase text-orange-100 mt-1 leading-tight tracking-[0.1em] opacity-90 line-clamp-2">{w.type}</p>
+                                            <p className="text-[10px] font-black text-yellow-300 italic mt-auto drop-shadow-md">{w.year}</p>
+                                        </div>
+                                    </div>
+                                ))}
+
+                                {/* MYSTERY CARD (WIE IS DE VOLGENDE?) */}
+                                <div key="mystery" className="flex-none w-[160px] snap-start bg-slate-50 rounded-[1.5rem] p-2 shadow-inner border-2 border-dashed border-slate-200 relative group flex flex-col h-[240px] opacity-80">
+                                    <div className="relative mt-1">
+                                        <div className="w-full aspect-square rounded-t-2xl overflow-hidden bg-slate-100 flex items-center justify-center shadow-inner">
+                                            <span className="text-6xl font-black italic text-slate-300">?</span>
+                                        </div>
+                                        <div className="absolute -bottom-4 left-1/2 -translate-x-1/2 bg-white rounded-full p-1.5 shadow-sm z-10">
+                                            <div className="bg-slate-100 rounded-full p-1.5 border border-white">
+                                                <Target size={16} className="text-slate-400" />
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div className="bg-slate-200 rounded-b-2xl pt-6 pb-3 px-2 text-center flex-1 flex flex-col justify-center shadow-inner mt-[-2px]">
+                                        <p className="text-xs font-black italic uppercase text-slate-500 drop-shadow-sm truncate px-1">Wie is de volgende?</p>
+                                        <p className="text-[7px] font-black uppercase text-slate-400 mt-1 leading-tight tracking-[0.1em]">Claim jouw plek</p>
+                                        <p className="text-[10px] font-black text-slate-400 italic mt-auto drop-shadow-md">Jij?</p>
+                                    </div>
                                 </div>
-                            ) : (
-                                <div className="bg-white rounded-[2rem] p-8 text-center border border-slate-100 shadow-sm">
-                                    <Trophy size={40} className="mx-auto text-slate-200 mb-4" />
-                                    <p className="text-[10px] font-black uppercase text-slate-400 italic">De Hall of Fame wacht op zijn eerste kampioen...</p>
-                                </div>
-                            )}
+                            </div>
                         </div>
 
                         {/* JOUW CHALLENGE REPORT (MARKETING/EGO KNOP) */}
