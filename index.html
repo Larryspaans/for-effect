@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="nl">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=0" />
+    
+    <meta name="theme-color" content="#E31E24" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+
+    <title>For-Effect Ultimate - Versie 2.0</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            keyframes: {
+              // 1. Jouw glans-effect van gisteren
+              glance: {
+                '0%': { left: '-100px' },
+                '20%': { left: '125%' },
+                '100%': { left: '125%' },
+              },
+              // 2. Jouw NIEUWE scan-effect van vandaag!
+              scan: {
+                '0%': { top: '-10px', opacity: '0' },
+                '10%': { opacity: '1' },
+                '90%': { opacity: '1' },
+                '100%': { top: '100%', opacity: '0' },
+              }
+            },
+            animation: {
+              'glance': 'glance 4s cubic-bezier(0.19, 1, 0.22, 1) infinite',
+              'scan': 'scan 2.5s linear infinite',
+            }
+          }
+        }
+      }
+    </script>
+
+    <style>
+        .no-select { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
+        input[type="checkbox"]:checked + span { text-decoration: line-through; opacity: 0.5; }
+        .hide-scrollbar::-webkit-scrollbar { display: none; }
+        .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        .gold-gradient { background: linear-gradient(135deg, #FFD700 0%, #FDB931 100%); }
+        .silver-gradient { background: linear-gradient(135deg, #C0C0C0 0%, #A9A9A9 100%); }
+        .bronze-gradient { background: linear-gradient(135deg, #CD7F32 0%, #B87333 100%); }
+    </style>
+    <script type="module" crossorigin src="/assets/index-Bt9hRWuO.js"></script>
+    <link rel="stylesheet" crossorigin href="/assets/index-tn0RQdqM.css">
+  </head>
+  <body class="bg-[#FDFDFD] no-select" oncontextmenu="return false;">
+    <div id="root"></div>
+  </body>
+</html>
