@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="nl">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=0, viewport-fit=cover" />
+    
+    <meta name="theme-color" content="#E31E24" />
+    
+    <link rel="manifest" href="/manifest.webmanifest" />
+
+    <link rel="apple-touch-icon" href="/apple-touch-icon.PNG" />
+    
+    <link rel="icon" type="image/png" href="/logo192.PNG" />
+
+    <title>For-Effect Ultimate - Versie 2.0</title>
+    
+    <!-- Tailwind draait nu als build-dependency (zie tailwind.config.js +
+         src/index.css) i.p.v. de Play-CDN — nodig voor de native app (werkt
+         offline, geen runtime-script). De custom animaties glance/scan staan
+         in tailwind.config.js. -->
+
+    <style>
+:root { --merk: #E31E24; } /* 🆕 merk-accentkleur; App.jsx zet per coach de juiste */
+        html, body {
+            overscroll-behavior-y: none;
+            overscroll-behavior-x: none;
+        }
+        .no-select { -webkit-touch-callout: none; -webkit-user-select: none; -moz-user-select: none; user-select: none; }
+        input[type="checkbox"]:checked + span { text-decoration: line-through; opacity: 0.5; }
+        .hide-scrollbar::-webkit-scrollbar { display: none; }
+        .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        .gold-gradient { background: linear-gradient(135deg, #FFD700 0%, #FDB931 100%); }
+        .silver-gradient { background: linear-gradient(135deg, #C0C0C0 0%, #A9A9A9 100%); }
+        .bronze-gradient { background: linear-gradient(135deg, #CD7F32 0%, #B87333 100%); }
+    </style>
+    <script type="module" crossorigin src="/assets/index-waA71Nx5.js"></script>
+    <link rel="stylesheet" crossorigin href="/assets/index-r_Ic39b4.css">
+  </head>
+  <body class="bg-[#FDFDFD] no-select" oncontextmenu="return false;">
+    <div id="root"></div>
+  </body>
+</html>
